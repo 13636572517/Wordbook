@@ -13,7 +13,7 @@ class MemoryRepo implements Repository {
   private activeUserId: ID | null = null;
   private wordbooks = new Map<ID, Wordbook>();
   private words = new Map<ID, Word>();
-  private membership = new Set<string>(); // `${wordbookId}:${wordId}`
+  private membership = new Map<ID, Set<ID>>(); // wordbookId -> Set<wordId>
   private progress = new Map<string, UserWordProgress>();
 
   async listUsers(): Promise<User[]> {
@@ -53,6 +53,8 @@ class MemoryRepo implements Repository {
     return wb;
   }
   async deleteWordbook(id: ID): Promise<void> {
+    const wb = this.wordbooks.get(id);
+    if (wb && wb.type === 'system') throw new Error(`cannot delete system wordbook: ${id}`);
     this.wordbooks.delete(id);
   }
 
@@ -67,16 +69,16 @@ class MemoryRepo implements Repository {
     return word;
   }
   async getWordsByWordbook(wordbookId: ID): Promise<Word[]> {
-    const ids = [...this.membership]
-      .filter((k) => k.startsWith(`${wordbookId}:`))
-      .map((k) => k.split(':')[1]);
-    return ids.map((id) => this.words.get(id)!).filter(Boolean);
+    const set = this.membership.get(wordbookId);
+    if (!set) return [];
+    return [...set].map((id) => this.words.get(id)!).filter(Boolean);
   }
   async addWordToWordbook(wordbookId: ID, wordId: ID): Promise<void> {
-    this.membership.add(`${wordbookId}:${wordId}`);
+    if (!this.membership.has(wordbookId)) this.membership.set(wordbookId, new Set());
+    this.membership.get(wordbookId)!.add(wordId);
   }
   async removeWordFromWordbook(wordbookId: ID, wordId: ID): Promise<void> {
-    this.membership.delete(`${wordbookId}:${wordId}`);
+    this.membership.get(wordbookId)?.delete(wordId);
   }
 
   async getProgress(userId: ID, wordbookId: ID, wordId: ID): Promise<UserWordProgress | null> {
@@ -84,6 +86,14 @@ class MemoryRepo implements Repository {
   }
   async setProgress(p: UserWordProgress): Promise<void> {
     this.progress.set(progressKey(p.userId, p.wordbookId, p.wordId), p);
+  }
+
+  // seed helpers (bulk writes for initial import performance)
+  async bulkUpsertWords(words: Word[]): Promise<void> {
+    for (const w of words) this.words.set(w.id, w);
+  }
+  async bulkSetMembership(wordbookId: ID, wordIds: ID[]): Promise<void> {
+    this.membership.set(wordbookId, new Set(wordIds));
   }
 }
 

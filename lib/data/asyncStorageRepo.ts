@@ -72,6 +72,8 @@ class AsyncStorageRepo implements Repository {
   }
   async deleteWordbook(id: ID): Promise<void> {
     const all = await read<Wordbook[]>(K.wordbooks, []);
+    const wb = all.find((w) => w.id === id);
+    if (wb && wb.type === 'system') throw new Error(`cannot delete system wordbook: ${id}`);
     await write(K.wordbooks, all.filter((w) => w.id !== id));
   }
 
@@ -125,6 +127,26 @@ class AsyncStorageRepo implements Repository {
     if (idx >= 0) all[idx] = p;
     else all.push(p);
     await write(K.progress, all);
+  }
+
+  // seed helpers (bulk writes, initial import performance)
+  async bulkUpsertWords(words: Word[]): Promise<void> {
+    const all = await read<Word[]>(K.words, []);
+    const map = new Map(all.map((w) => [w.id, w]));
+    for (const w of words) map.set(w.id, w);
+    await write(K.words, [...map.values()]);
+  }
+  async bulkSetMembership(wordbookId: ID, wordIds: ID[]): Promise<void> {
+    const links = await read<WordbookWord[]>(K.membership, []);
+    const seen = new Set(links.map((l) => `${l.wordbookId}|${l.wordId}`));
+    for (const id of wordIds) {
+      const key = `${wordbookId}|${id}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        links.push({ wordbookId, wordId: id });
+      }
+    }
+    await write(K.membership, links);
   }
 }
 

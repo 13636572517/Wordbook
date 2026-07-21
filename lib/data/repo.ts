@@ -37,4 +37,8 @@ export interface Repository {
   // progress (user x wordbook x word)
   getProgress(userId: ID, wordbookId: ID, wordId: ID): Promise<UserWordProgress | null>;
   setProgress(p: UserWordProgress): Promise<void>;
+
+  // seed helpers (bulk writes for initial import performance)
+  bulkUpsertWords(words: Word[]): Promise<void>;
+  bulkSetMembership(wordbookId: ID, wordIds: ID[]): Promise<void>;
 }
