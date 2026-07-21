@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_LANGUAGE_CODE } from './languages';
 import { SEED_WORDS } from './seedWords';
+import { lookupIpa } from './ipaData';
 
 const LEGACY_WORDS_KEY = 'vocabulary_words';
 const LEGACY_ID_KEY = 'vocabulary_next_id';
@@ -112,7 +113,8 @@ export async function migrateIfNeeded(): Promise<void> {
 }
 
 // Seed the open-licensed high-school English vocabulary into the `en` library
-// once, on first launch.
+// once, on first launch. IPA (offline, from ipaData) is attached to
+// `pronunciation` so the flashcard can show it without any network call.
 export async function seedHighSchoolIfNeeded(): Promise<void> {
   const flagged = await AsyncStorage.getItem(SEEDED_KEY);
   if (flagged) return;
@@ -126,7 +128,7 @@ export async function seedHighSchoolIfNeeded(): Promise<void> {
         id: id++,
         word: s.word,
         translation: s.translation,
-        pronunciation: '',
+        pronunciation: lookupIpa(s.word) ?? '',
       })
     );
     await saveWords('en', words);
@@ -134,6 +136,27 @@ export async function seedHighSchoolIfNeeded(): Promise<void> {
     void startId;
   }
   await AsyncStorage.setItem(SEEDED_KEY, '1');
+}
+
+// One-time backfill: existing words seeded before IPA existed have an empty
+// pronunciation; fill it from the offline ipaData map.
+const IPA_BACKFILLED_KEY = 'ipa_backfilled_v1';
+export async function backfillIpaIfNeeded(): Promise<void> {
+  const flagged = await AsyncStorage.getItem(IPA_BACKFILLED_KEY);
+  if (flagged) return;
+  const words = await loadWords('en');
+  let changed = false;
+  for (const w of words) {
+    if (!w.pronunciation) {
+      const ipa = lookupIpa(w.word);
+      if (ipa) {
+        w.pronunciation = ipa;
+        changed = true;
+      }
+    }
+  }
+  if (changed) await saveWords('en', words);
+  await AsyncStorage.setItem(IPA_BACKFILLED_KEY, '1');
 }
 
 export async function getSelectedLanguage(): Promise<string> {

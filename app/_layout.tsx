@@ -11,7 +11,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { migrateIfNeeded, seedHighSchoolIfNeeded } from '@/lib/database';
+import { migrateIfNeeded, seedHighSchoolIfNeeded, backfillIpaIfNeeded } from '@/lib/database';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -42,6 +42,7 @@ export default function RootLayout() {
     if (loaded) {
       migrateIfNeeded()
         .then(() => seedHighSchoolIfNeeded())
+        .then(() => backfillIpaIfNeeded())
         .finally(() => SplashScreen.hideAsync());
     }
   }, [loaded]);

@@ -154,9 +154,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   pronunciationBack: {
-    fontSize: 14,
+    fontSize: 15,
     letterSpacing: 0.5,
     marginBottom: 6,
+    fontStyle: 'italic',
   },
   wordBack: {
     fontSize: 36,
