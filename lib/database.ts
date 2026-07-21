@@ -254,18 +254,13 @@ export function sm2(
 
 // Words the user explicitly asked to re-practice (e.g. from the weak-words tab).
 // getQuizWord drains these before falling back to scheduled/due words.
-import { selectQuizWord, getPriorityIds, setPriorityIds } from './quizSelection';
+import { selectQuizWord } from './quizSelection';
 
 // Pick the next word to study: priority (re-practice) words first, then most-overdue
 // due words, then brand-new ones. Consumed priority ids are removed so they aren't repeated.
 export async function getQuizWord(languageCode: string): Promise<Word | null> {
   const words = await loadWords(languageCode);
-  const priority = getPriorityIds();
-  const chosen = selectQuizWord(words, priority, Date.now());
-  if (chosen && priority.includes(chosen.id)) {
-    setPriorityIds(priority.filter((id) => id !== chosen.id));
-  }
-  return chosen;
+  return selectQuizWord(words, [], Date.now());
 }
 
 // Record a review grade for a word and update its schedule.

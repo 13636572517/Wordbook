@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import useColors from './useColors';
-import { Word } from '@/lib/database';
+import type { Word } from '@/lib/data';
 import { speakWord } from '@/lib/speech';
 import { LanguageConfig } from '@/lib/languages';
 

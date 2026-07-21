@@ -11,7 +11,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { migrateIfNeeded, seedHighSchoolIfNeeded, backfillIpaIfNeeded } from '@/lib/database';
+import { SessionProvider } from '@/components/SessionProvider';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -39,12 +39,7 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
-      migrateIfNeeded()
-        .then(() => seedHighSchoolIfNeeded())
-        .then(() => backfillIpaIfNeeded())
-        .finally(() => SplashScreen.hideAsync());
-    }
+    if (loaded) SplashScreen.hideAsync();
   }, [loaded]);
 
   if (!loaded) return null;
@@ -59,26 +54,28 @@ function RootLayoutNav() {
     <ThemeProvider
       value={colorScheme === 'light' ? DefaultTheme : CustomDarkTheme}
     >
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="add-modal"
-          options={{
-            presentation: 'modal',
-            headerShown: false,
-            animation: 'slide_from_bottom',
-          }}
-        />
-        <Stack.Screen
-          name="language-modal"
-          options={{
-            presentation: 'modal',
-            headerShown: false,
-            animation: 'slide_from_bottom',
-          }}
-        />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+      <SessionProvider>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="add-modal"
+            options={{
+              presentation: 'modal',
+              headerShown: false,
+              animation: 'slide_from_bottom',
+            }}
+          />
+          <Stack.Screen
+            name="language-modal"
+            options={{
+              presentation: 'modal',
+              headerShown: false,
+              animation: 'slide_from_bottom',
+            }}
+          />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+      </SessionProvider>
     </ThemeProvider>
   );
 }

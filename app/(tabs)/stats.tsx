@@ -1,80 +1,37 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import useColors from '@/components/useColors';
-import useLanguage from '@/components/useLanguage';
-import {
-  getStats,
-  getStreak,
-  getSelectedLanguage,
-  setStreak,
-  setSelectedLanguage,
-  importWords,
-  getAllWords,
-  StudyStats,
-  StreakData,
-} from '@/lib/database';
-import { buildSnapshot, mergeWords, SyncError } from '@/lib/sync';
-import { exportProgress, importProgress } from '@/lib/syncIo';
+import { repo } from '@/lib/data';
+import { getWordbookStats, type WordbookStats } from '@/lib/data/stats';
+import { useSession } from '@/components/SessionProvider';
 
 export default function StatsScreen() {
-  const [stats, setStats] = useState<StudyStats | null>(null);
-  const [streak, setStreak] = useState<StreakData | null>(null);
+  const [stats, setStats] = useState<WordbookStats | null>(null);
   const [loading, setLoading] = useState(true);
   const colors = useColors();
-  const { language, refresh } = useLanguage();
   const insets = useSafeAreaInsets();
+  const { user, wordbook } = useSession();
 
   useFocusEffect(
     React.useCallback(() => {
       let cancelled = false;
       (async () => {
-        const code = await refresh();
-        if (cancelled) return;
-        const [s, st] = await Promise.all([getStats(code), getStreak()]);
+        if (!user || !wordbook) return;
+        const s = await getWordbookStats(repo, user.id, wordbook.id, Date.now());
         if (cancelled) return;
         setStats(s);
-        setStreak(st);
         setLoading(false);
       })();
       return () => {
         cancelled = true;
       };
-    }, [refresh])
+    }, [user, wordbook]),
   );
 
-  const handleExport = async () => {
-    if (!language) return;
-    const code = language.code;
-    const [all, st, statsData] = await Promise.all([
-      getAllWords(code),
-      getStreak(),
-      getStats(code),
-    ]);
-    const settings = { language: await getSelectedLanguage() };
-    await exportProgress(buildSnapshot(all, st, statsData, settings));
-  };
-
-  const handleImport = async () => {
-    if (!language) return;
-    try {
-      const imported = await importProgress();
-      const existing = await getAllWords(language.code);
-      const merged = mergeWords(existing, imported.words);
-      await importWords(language.code, merged);
-      await setStreak(imported.streak);
-      if (imported.settings?.language) await setSelectedLanguage(imported.settings.language);
-      await refresh();
-      Alert.alert('导入成功', `已合并 ${merged.length} 个词的学习进度`);
-    } catch (e) {
-      const msg = e instanceof SyncError ? e.message : '导入失败，请检查文件';
-      Alert.alert('导入失败', msg);
-    }
-  };
-
-  if (loading || !stats || !language) {
+  if (loading || !stats || !wordbook) {
     return (
       <View
         style={[
@@ -94,13 +51,15 @@ export default function StatsScreen() {
         { backgroundColor: colors.background, paddingTop: insets.top },
       ]}
     >
-      <Text style={[styles.heading, { color: colors.text }]}>统计</Text>
+      <Text style={[styles.heading, { color: colors.text }]}>
+        {wordbook.name} · 统计
+      </Text>
 
       <View style={[styles.streakCard, { backgroundColor: colors.card }]}>
         <FontAwesome name="fire" size={28} color={colors.tint} />
         <View style={styles.streakText}>
           <Text style={[styles.streakNum, { color: colors.text }]}>
-            {streak?.streak ?? 0} 天
+            {stats.streak} 天
           </Text>
           <Text style={[styles.streakLabel, { color: colors.subtitle }]}>
             连续学习
@@ -133,27 +92,8 @@ export default function StatsScreen() {
           />
         </View>
         <Text style={[styles.accDetail, { color: colors.subtitle }]}>
-          正确 {stats.correct} · 错误 {stats.wrong}
+          已掌握 {stats.mastered} · 学习中 {stats.learning}
         </Text>
-      </View>
-
-      <View style={styles.syncRow}>
-        <TouchableOpacity
-          style={[styles.syncBtn, { borderColor: colors.tint }]}
-          onPress={handleExport}
-          activeOpacity={0.7}
-        >
-          <FontAwesome name="download" size={14} color={colors.tint} />
-          <Text style={[styles.syncBtnText, { color: colors.tint }]}>导出进度</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.syncBtn, { backgroundColor: colors.tint }]}
-          onPress={handleImport}
-          activeOpacity={0.7}
-        >
-          <FontAwesome name="upload" size={14} color="#0D0D0D" />
-          <Text style={[styles.syncBtnText, { color: '#0D0D0D' }]}>导入进度</Text>
-        </TouchableOpacity>
       </View>
 
       <Text style={[styles.note, { color: colors.subtitle }]}>
@@ -270,24 +210,5 @@ const styles = StyleSheet.create({
   note: {
     fontSize: 13,
     lineHeight: 20,
-  },
-  syncRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  syncBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 12,
-    paddingVertical: 12,
-    borderWidth: 1,
-  },
-  syncBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
   },
 });

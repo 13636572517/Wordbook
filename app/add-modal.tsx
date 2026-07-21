@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   TouchableOpacity,
@@ -13,49 +13,47 @@ import { router } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useColors from '@/components/useColors';
-import useLanguage from '@/components/useLanguage';
 import WordForm from '@/components/WordForm';
-import { insertWord } from '@/lib/database';
-import { generatePronunciation } from '@/lib/pronunciation';
+import { repo } from '@/lib/data';
+import type { Word } from '@/lib/data';
+import { lookupIpa } from '@/lib/ipaData';
+import { getLanguageByCode } from '@/lib/languages';
+import { useSession } from '@/components/SessionProvider';
+
+const ENGLISH = getLanguageByCode('en');
 
 export default function AddModal() {
   const [wordText, setWordText] = useState('');
   const [translation, setTranslation] = useState('');
-  const [pronunciation, setPronunciation] = useState('');
   const colors = useColors();
-  const { language, refresh } = useLanguage();
   const insets = useSafeAreaInsets();
+  const { wordbook } = useSession();
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const canSave = wordText.trim().length > 0 && translation.trim().length > 0;
 
   const handleSave = async () => {
-    if (!language) return;
+    if (!wordbook) return;
     const trimmedWord = wordText.trim();
     const trimmedTranslation = translation.trim();
-
     if (!trimmedWord || !trimmedTranslation) {
-      Alert.alert('Missing fields', `Please enter both ${language.nativeName} and translation.`);
+      Alert.alert('Missing fields', 'Please enter both word and translation.');
       return;
     }
-
-    const finalPronunciation = language.hasPronunciationGuide
-      ? pronunciation || generatePronunciation(trimmedWord, language.code)
-      : '';
-    await insertWord(language.code, trimmedWord, trimmedTranslation, finalPronunciation);
+    const w: Word = {
+      id: `w_${trimmedWord.toLowerCase()}`,
+      word: trimmedWord,
+      translation: trimmedTranslation,
+      pronunciation: lookupIpa(trimmedWord) ?? null,
+    };
+    await repo.upsertWord(w);
+    await repo.addWordToWordbook(wordbook.id, w.id);
     setWordText('');
     setTranslation('');
-    setPronunciation('');
-    Alert.alert('Saved!', `"${trimmedWord}" added to your ${language.name} library.`, [
+    Alert.alert('Saved!', `"${trimmedWord}" added to 「${wordbook.name}」.`, [
       { text: 'Add Another', style: 'default' },
       { text: 'Done', style: 'cancel', onPress: () => router.back() },
     ]);
   };
-
-  const canSave = wordText.trim().length > 0 && translation.trim().length > 0;
-
-  if (!language) return null;
 
   return (
     <KeyboardAvoidingView
@@ -68,7 +66,7 @@ export default function AddModal() {
 
       <View style={styles.headerRow}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>
-          Add Word
+          Add Word{wordbook ? ` · ${wordbook.name}` : ''}
         </Text>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -85,13 +83,13 @@ export default function AddModal() {
         showsVerticalScrollIndicator={false}
       >
         <WordForm
-          language={language}
+          language={ENGLISH}
           wordText={wordText}
           onWordTextChange={setWordText}
           translation={translation}
           onTranslationChange={setTranslation}
-          pronunciation={pronunciation}
-          onPronunciationChange={setPronunciation}
+          pronunciation=""
+          onPronunciationChange={() => {}}
         />
 
         <TouchableOpacity

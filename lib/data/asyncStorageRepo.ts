@@ -13,12 +13,22 @@ const K = {
   progress: 'vocab_user_progress',
 };
 
+// In-memory snapshot cache. Each key is loaded from disk at most once; writes
+// update both memory and disk. Avoids the O(words) AsyncStorage reads that
+// would otherwise happen on every quiz/stats load (e.g. getProgress called
+// once per word in a 6000-word book). Single-process app, so no invalidation
+// needed; storage keys owned by other modules (session, sync) are unaffected.
+const cache: Record<string, unknown> = {};
+
 async function read<T>(key: string, fallback: T): Promise<T> {
+  if (Object.prototype.hasOwnProperty.call(cache, key)) return cache[key] as T;
   const raw = await AsyncStorage.getItem(key);
-  if (raw == null) return fallback;
-  return JSON.parse(raw) as T;
+  const v: T = raw == null ? fallback : (JSON.parse(raw) as T);
+  cache[key] = v;
+  return v;
 }
 async function write<T>(key: string, value: T): Promise<void> {
+  cache[key] = value;
   await AsyncStorage.setItem(key, JSON.stringify(value));
 }
 

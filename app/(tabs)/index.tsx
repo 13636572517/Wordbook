@@ -11,20 +11,18 @@ import { router } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useColors from '@/components/useColors';
-import useLanguage from '@/components/useLanguage';
-import {
-  getQuizWord,
-  reviewWord,
-  getWordCount,
-  getStats,
-  getStreak,
-  Word,
-  Grade,
-  StudyStats,
-  StreakData,
-} from '@/lib/database';
+import { repo } from '@/lib/data';
+import type { Word } from '@/lib/data';
+import { getNextQuizWord } from '@/lib/data/quiz';
+import { reviewWord } from '@/lib/data/review';
+import { getWordbookStats, type WordbookStats } from '@/lib/data/stats';
+import { Grade } from '@/lib/sm2';
+import { getPriorityIds, clearPriorityIds } from '@/lib/quizSelection';
+import { getLanguageByCode } from '@/lib/languages';
+import { useSession } from '@/components/SessionProvider';
 import FlashCard from '@/components/FlashCard';
 
+const ENGLISH = getLanguageByCode('en');
 const GRADES: { grade: Grade; label: string; color: string }[] = [
   { grade: 0, label: 'Again', color: '#E5484D' },
   { grade: 1, label: 'Hard', color: '#F5A623' },
@@ -35,67 +33,61 @@ const GRADES: { grade: Grade; label: string; color: string }[] = [
 export default function HomeScreen() {
   const [word, setWord] = useState<Word | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [count, setCount] = useState(0);
-  const [stats, setStats] = useState<StudyStats | null>(null);
-  const [streak, setStreak] = useState<StreakData | null>(null);
+  const [stats, setStats] = useState<WordbookStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [cardKey, setCardKey] = useState(0);
   const colors = useColors();
-  const { language, refresh: refreshLanguage } = useLanguage();
   const insets = useSafeAreaInsets();
-  const activeLangRef = useRef<string | null>(null);
+  const { user, wordbook } = useSession();
+  const activeWbRef = useRef<string | null>(null);
   const hasWordRef = useRef(false);
 
-  const loadNext = useCallback(async (langCode: string) => {
-    const [w, c, s, st] = await Promise.all([
-      getQuizWord(langCode),
-      getWordCount(langCode),
-      getStats(langCode),
-      getStreak(),
+  const loadNext = useCallback(async () => {
+    if (!user || !wordbook) return;
+    const now = Date.now();
+    const prio = getPriorityIds();
+    const [w, s] = await Promise.all([
+      getNextQuizWord(repo, user.id, wordbook.id, prio, now),
+      getWordbookStats(repo, user.id, wordbook.id, now),
     ]);
+    clearPriorityIds();
     setWord(w);
     hasWordRef.current = w != null;
-    setCount(c);
     setStats(s);
-    setStreak(st);
     setIsFlipped(false);
     setCardKey((k) => k + 1);
     setLoading(false);
-  }, []);
+  }, [user, wordbook]);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
-        const langCode = await refreshLanguage();
-        if (cancelled) return;
-
-        const langChanged = activeLangRef.current !== langCode;
-        activeLangRef.current = langCode;
-
-        if (langChanged || !hasWordRef.current) {
+        if (!user || !wordbook) return;
+        const changed = activeWbRef.current !== wordbook.id;
+        activeWbRef.current = wordbook.id;
+        const hasPrio = getPriorityIds().length > 0;
+        if (changed || !hasWordRef.current || hasPrio) {
           setLoading(true);
-          await loadNext(langCode);
+          await loadNext();
         } else {
-          const c = await getWordCount(langCode);
-          if (!cancelled) setCount(c);
           setLoading(false);
         }
       })();
       return () => {
         cancelled = true;
       };
-    }, [refreshLanguage, loadNext])
+    }, [user, wordbook, loadNext]),
   );
 
   const handleGrade = async (grade: Grade) => {
-    if (word && language) {
-      await reviewWord(language.code, word.id, grade);
-      loadNext(language.code);
+    if (word && user && wordbook) {
+      await reviewWord(repo, user.id, wordbook.id, word.id, grade, Date.now());
+      loadNext();
     }
   };
 
-  if (loading || !language) {
+  if (loading || !user || !wordbook) {
     return (
       <View
         style={[
@@ -116,25 +108,22 @@ export default function HomeScreen() {
       ]}
     >
       <View style={styles.header}>
-        <View>
-          <Text style={[styles.title, { color: colors.text }]}>Vocab</Text>
-          {count > 0 && (
-            <Text style={[styles.countBadge, { color: colors.pinyin }]}>
-              {count} words
-            </Text>
-          )}
-        </View>
+        <TouchableOpacity
+          style={styles.titleWrap}
+          onPress={() => router.push('/library')}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.title, { color: colors.text }]}>
+            {wordbook.name}
+          </Text>
+          <FontAwesome
+            name="chevron-right"
+            size={13}
+            color={colors.subtitle}
+            style={{ marginLeft: 6 }}
+          />
+        </TouchableOpacity>
         <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={[styles.langButton, { borderColor: colors.tint }]}
-            onPress={() => router.push('/language-modal')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.langFlag}>{language.flag}</Text>
-            <Text style={[styles.langLabel, { color: colors.tint }]}>
-              {language.nativeName}
-            </Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.addButton, { backgroundColor: colors.tint }]}
             onPress={() => router.push('/add-modal')}
@@ -149,7 +138,7 @@ export default function HomeScreen() {
         <View style={styles.statsRow}>
           <StatChip
             icon="fire"
-            value={String(streak?.streak ?? 0)}
+            value={String(stats.streak)}
             label="天连续"
             color={colors.tint}
           />
@@ -181,26 +170,17 @@ export default function HomeScreen() {
             All caught up!
           </Text>
           <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
-            没有待复习的词了，明天再来看看～
+            「{wordbook.name}」没有待复习的词了，明天再来看看～
           </Text>
-          <TouchableOpacity
-            style={[styles.emptyAddButton, { backgroundColor: colors.tint }]}
-            onPress={() => router.push('/add-modal')}
-            activeOpacity={0.7}
-          >
-            <FontAwesome name="plus" size={16} color="#0D0D0D" />
-            <Text style={styles.emptyAddText}>Add a word</Text>
-          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.cardArea}>
           <FlashCard
             key={cardKey}
             word={word}
-            language={language}
+            language={ENGLISH}
             onFlip={setIsFlipped}
           />
-
           {isFlipped ? (
             <View style={styles.gradeRow}>
               {GRADES.map((g) => (
@@ -256,36 +236,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 16,
   },
+  titleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   title: {
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: -0.5,
   },
-  countBadge: {
-    fontSize: 12,
-    marginTop: 2,
-    letterSpacing: 0.3,
-  },
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-  },
-  langButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  langFlag: {
-    fontSize: 18,
-  },
-  langLabel: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   addButton: {
     width: 40,
@@ -336,19 +299,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 28,
     textAlign: 'center',
-  },
-  emptyAddButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  emptyAddText: {
-    color: '#0D0D0D',
-    fontSize: 16,
-    fontWeight: '600',
   },
   cardArea: {
     flex: 1,

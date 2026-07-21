@@ -1,13 +1,14 @@
-// Local re-practice queue (used by the weak-words tab). Kept for app compatibility.
-let priorityIds: number[] = [];
+// Local re-practice queue (used by the weak-words tab). Stores word ids
+// (strings) so the DAL can match them against real Word.id values.
+let priorityIds: string[] = [];
 
-export function setPriorityIds(ids: number[]): void {
+export function setPriorityIds(ids: string[]): void {
   priorityIds = [...ids];
 }
 export function clearPriorityIds(): void {
   priorityIds = [];
 }
-export function getPriorityIds(): number[] {
+export function getPriorityIds(): string[] {
   return priorityIds;
 }
 
