@@ -1,127 +1,85 @@
 # 实现计划：单词本 + 云端账户（SSO）
 
-> 工作流：superpowers Phase 2。每个任务 = 写失败测试(RED) → 实现(GREEN) → 提交。后端用 Django 测试（pytest）；App 端复用现有 `tsx` 测试（见 trio 分支测试方式）。
-> **约束**：凡涉及服务器写操作（建库 / migrate / 部署）的任务，执行前单独显式确认；其余本地可测任务直接按 TDD 推进。
+> 工作流：superpowers Phase 2。每个任务 = 写失败测试(RED) → 实现(GREEN) → 提交。
+> 后端逻辑用 Django 测试（pytest）；App 端纯逻辑用现有 `tsx` 测试（参考 trio 分支）。
+> **约束**：凡涉及服务器写操作（建库 / migrate / 部署）的任务，执行前单独显式确认。
 
-## P1 — 后端 + 账户（SSO）
+## 执行策略（2026-07-21 用户拍板：先本地开发，再 migrate 到服务器）
 
-### T1 后端脚手架（Django + DRF + SimpleJWT + CORS）
-- 目标：`server/` 下新建 Django 项目 `learning`，配置 DRF、simplejwt、cors-headers；敏感配置（DB、JWT 密钥）全走 env。
-- 文件：`server/learning/settings.py`、`server/manage.py`、`server/requirements.txt`、`server/.env.example`
-- RED：`server` 能 `manage.py check` 通过；`pytest` 加载 settings 不报错。
-- GREEN：最小可运行项目 + 依赖锁。
-- commit：`chore: scaffold Django backend (learning)`
+- **Phase A 本地优先**：在本地用 AsyncStorage 把账户（本地多档案占位）+ 词本（分级内置 + 自定义）+ 词本级进度/统计/quiz 全部做通，App 可本地完整运行、可演示。
+- **数据访问层（DAL）抽象**：所有数据读写走 `lib/data/` 定义的 Repository 接口。现提供 AsyncStorage 实现（App 用）；测试用内存实现（无 RN 依赖，tsx 可跑）。
+  - **关键收益**：将来"migrate 到服务器"时，只需新增 HTTP API 实现替换 AsyncStorage 实现，业务/UI 代码几乎不动。
+- **数据模型字段全程与服务器对齐**：`user_id` / `wordbook_id` / `word_id` / SM-2 字段（ef/interval/repetitions/due/correct/wrong）与 `learning` 库表一一对应。
+- **账户占位**：本地阶段用「本地多用户档案」（username + 本地生成的 user_id），无密码/无后端。部署阶段把鉴权切到 gesp SSO（只换 auth，progress 模型不变）。
+- **Phase B 服务器迁移**：搭建 Django 后端 + `learning` 库 + gesp SSO + nginx/子域名/HTTPS；把 DAL 的 AsyncStorage 实现换成 HTTP API 实现即可。
 
-### T2 数据模型
-- 目标：Django models 对应 §5 五张表；`user_id` 用 `BigIntegerField`（无 User 模型 / 无 FK）。
-- 文件：`server/words/models.py`、`server/words/migrations/`
-- RED：`models.py` import 即报错（未建）。
-- GREEN：model + migration 生成；`assert Wordbook/Word/...` 可实例化。
-- commit：`feat: wordbook/word/progress models`
+## Phase A — 本地开发（AsyncStorage + DAL 抽象）
 
-### T3 JWT 校验（SSO 核心）
-- 目标：词汇后端校验 gesp 签发的 JWT，注入 `request.user_id`。两种实现二选一（推荐 A）：
-  - A：共享 gesp 的 JWT 签名密钥（env 注入），用 simplejwt 本地验签；
-  - B：调 gesp 的 `api/auth/token/verify/` 或 `/me` 端点拿 user_id（不持有密钥）。
-- 文件：`server/words/auth.py`（认证类 / 中间件）、测试 `server/words/tests/test_auth.py`
-- RED：带无效/过期 token 的请求被 401；不带 token 的受保护接口 401。
-- GREEN：合法 gesp JWT → `request.user_id` 被正确设置；下游 API 可用。
-- commit：`feat: validate gesp JWT, inject user_id (SSO)`
+### LA1 数据访问层骨架
+- 目标：`lib/data/types.ts`（User/Wordbook/Word/WordbookWord/UserWordProgress）、`lib/data/repo.ts`（Repository 接口，纯 TS 无 RN 依赖）、`lib/data/memoryRepo.ts`（测试用内存实现）、`lib/data/asyncStorageRepo.ts`（App 用）、`lib/data/index.ts`（导出当前实现）。
+- 存储键约定（对齐服务器表）：`vocab_users` / `vocab_active_user` / `vocab_wordbooks` / `vocab_words` / `vocab_wordbook_words` / `vocab_user_progress`。
+- RED：`lib/data/__tests__/repo.test.ts` 对 memoryRepo 断言 CRUD 行为，运行失败（未实现）。
+- GREEN：memoryRepo 全部 CRUD 通过；asyncStorageRepo 结构对齐。
+- commit：`feat(data): DAL skeleton + memory/async-storage repos`
 
-### T4 词本 API
-- 目标：列表/详情/创建/删除。系统词本只读；自定义词本仅 owner 可改。
-- 文件：`server/words/views.py`、`serializers.py`、`urls.py`
-- RED：未授权创建被拒；删他人词本被拒；系统词本 DELETE 被拒。
-- GREEN：自定义词本 CRUD 正常；系统词本只读。
-- commit：`feat: wordbook CRUD API`
+### LA2 本地多用户档案（账户占位）
+- 目标：创建/列出/切换用户；`getActiveUser/setActiveUser/createUser`。user_id 本地生成（uuid），字段对齐服务器 `user_id`。
+- RED：创建同名用户、切换不存在用户 → 测试失败/抛错。
+- GREEN：多档案独立存在；切换生效。
+- commit：`feat(data): local multi-user profiles`
 
-### T5 单词 API + 词本成员关系
-- 目标：单词列表/搜索；把单词加入/移出多个词本（一词多本）。
-- RED：同一 word 加入两个 wordbook 均成功；移出不串扰。
-- GREEN：`POST /wordbooks/{id}/words`、`DELETE ...` 正确维护 `wordbook_words`。
-- commit：`feat: word + wordbook_words API`
+### LA3 词本模型 + 内置/自定义词本
+- 目标：`listWordbooks(ownerId?)` / `createWordbook` / `deleteWordbook`；内置 system 词本（高中/四级/六级）seeded 一次；自定义 custom 词本仅 owner 可删。
+- 文件：`lib/data/seedWordbooks.ts`（用现有高中词表建「高中」词本；四级/六级占位待导入）。
+- RED：删 system 词本被拒；删他人 custom 词本被拒。
+- GREEN：系统词本只读、自定义 CRUD 正常。
+- commit：`feat(data): wordbook model + system/custom wordbooks`
 
-### T6 进度 API（quiz + SM-2）
-- 目标：`GET /wordbooks/{id}/next` 按 due/overdue 取下一词；`POST .../review` 用 SM-2 更新 `user_word_progress`。
-- 文件：`server/words/sm2.py`（与 App 现有 `sm2` 同算法）、`views_progress.py`
-- RED：review 后 ef/interval/due 不合预期 → 测试失败；next 不返回未到期词。
-- GREEN：SM-2 与 App 端算法一致；next 优先返回 overdue → new。
-- commit：`feat: study progress + SM-2 API`
+### LA4 词本成员关系（一词多本）
+- 目标：`addWordToWordbook` / `removeWordFromWordbook` / `getWordsByWordbook`；同一 word 可属多本、移出不串扰。
+- RED：同一 word 加两本均成功；移出不串扰 → 失败（未实现）。
+- GREEN：`wordbook_words` 维护正确。
+- commit：`feat(data): wordbook-word membership (one word many books)`
 
-### T7 统计 API
-- 目标：按词本返回 total/due/mastered/accuracy + 连续天数（streak）。
-- RED：空词本统计为 0；复习后 accuracy 变化正确。
-- GREEN：`GET /wordbooks/{id}/stats` 正确聚合。
-- commit：`feat: per-wordbook stats API`
-
-### T8 建库 + 部署（⚠️ 需显式确认后执行）
-- 目标：服务器上 `CREATE DATABASE learning`、`CREATE USER learning@localhost`、`GRANT`、`migrate`、gunicorn 起服务、nginx 加 `learning.yusuan.xyz` 反代 + CORS_ORIGINS 加该域、HTTPS。
-- 文件：`server/requirements.txt`、nginx 配置片段、systemd/启动脚本
-- 执行前：单独征得用户同意；先在 dry-run / 本地 sqlite 验证全部测试通过。
-- commit：`deploy: learning backend on ali server (subdomain + db)`
-
-## P2 — 词本功能（App 端）
-
-### T9 内置词表导入
-- 目标：开放词表（高中/四级/六级）脚本导入 `words` 并建 `system` 词本（版权安全源）。
-- 文件：`server/words/management/commands/import_wordlists.py`、词表数据（开源）
-- RED：重复导入产生重复词 → 测试失败（应幂等）。
-- GREEN：幂等导入；system 词本含正确词数。
-- commit：`feat: import open wordlists as system wordbooks`
-
-### T10 App API 客户端（替换本地存储）
-- 目标：在 App 端抽象"数据源"层，将 `lib/database.ts` 的本地读写替换为调后端 API；登录走 gesp `api/auth/` 拿 JWT 并存安全存储。
-- 文件：`lib/api.ts`（HTTP 客户端 + token 管理）、改造 `lib/database.ts` 接口
-- RED：mock 后端返回错误时客户端抛错；无 token 调用受保护接口被拦。
-- GREEN：单词/进度读写经 API；离线时降级本地缓存（接 T16）。
-- commit：`feat: app API client (auth via gesp JWT)`
-
-### T11 Library → 书架 UI
-- 目标：Library Tab 改为分级词本书架 + 自定义词本入口 + 进入词本学习。
-- 文件：`app/(tabs)/library.tsx` 改造、`components/WordbookCard.tsx`
-- RED：渲染测试（快照/存在性）。
-- GREEN：展示系统词本 + 自定义词本；点击进入。
-- commit：`feat: library as wordbook shelf UI`
-
-### T12 quiz 按词本取词
-- 目标：学习前选词本，`getQuizWord` 限定 wordbook_id。
-- 文件：`lib/database.ts`、`app/(tabs)/index.tsx`
-- RED：选 B 本时不出现 A 本进度。
-- GREEN：quiz 范围正确限定。
+### LA5 quiz 按词本取词
+- 目标：把现有 `getQuizWord` 改造为 `getQuizWord(userId, wordbookId, now)`，仅在该词本范围内按 due/overdue→new 取词；复用 `quizSelection` 纯逻辑。
+- RED：选 B 本不出现 A 本进度 → 失败。
+- GREEN：范围正确限定；薄弱词重练注入仍有效。
 - commit：`feat: scope quiz to selected wordbook`
 
-### T13 旧数据迁移
-- 目标：首次登录把现有 `en` 桶（AsyncStorage）映射到"高中"词本并上报云端。
-- 文件：`lib/migrateLegacy.ts`
-- RED：重复迁移产生重复进度 → 失败。
-- GREEN：幂等迁移；旧进度落到对应用户的高中词本。
-- commit：`feat: migrate legacy en bucket to high-school wordbook`
-
-## P3 — 云同步 + 统计 + 离线
-
-### T14 实时同步
-- 目标：进度变更上报后端；多端拉取；冲突策略（last-write-wins 或 SM-2 合并）。
-- RED：两设备各学一词后拉取，进度互不覆盖（按预期合并）。
-- GREEN：`sync pull/push` 正确。
-- commit：`feat: realtime cloud sync`
-
-### T15 词本级统计 UI
-- 目标：统计 Tab 按词本展示（复用 T7 API）。
-- RED：渲染测试。
+### LA6 词本级进度与统计
+- 目标：`getProgress(userId,wordbookId,wordId)` / `setProgress`；`getWordbookStats` 返回 total/due/mastered/accuracy + streak（按词本）。
+- RED：空词本统计为 0；复习后 accuracy 变化正确 → 失败。
 - GREEN：各词本统计独立正确。
-- commit：`feat: per-wordbook stats UI`
+- commit：`feat(data): per-wordbook progress + stats`
 
-### T16 离线兜底
-- 目标：无网时可学，操作入本地队列，上线后合并（接 T10 降级 + T14 推送）。
-- RED：离线复习后仍能在恢复后同步。
-- GREEN：离线队列 flush 成功。
-- commit：`feat: offline queue + merge`
+### LA7 Library → 书架 UI
+- 目标：Library Tab 改为分级词本书架 + 自定义词本入口 + 进入词本学习。
+- 文件：`app/(tabs)/library.tsx` 改造、`components/WordbookCard.tsx`
+- GREEN：展示系统词本 + 自定义词本；点击进入学习。
+- commit：`feat(ui): library as wordbook shelf`
 
-### T17 部署收尾
-- 目标：Expo Web 构建托管于 `learning.yusuan.xyz`、HTTPS 证书、基础监控。
-- commit：`deploy: expo web hosting + https`
+### LA8 登录 / 用户切换 UI
+- 目标：启动选/建用户（本地档案）；显示当前用户；切换/退出。
+- 文件：`app/(tabs)/_layout.tsx` 或新 `app/profile.tsx`；登录态接 DAL。
+- commit：`feat(ui): local user switch / login`
 
-## 执行方式（待用户选择）
-- **A. Subagent 驱动（本会话）**：每个任务用 Agent 工具派 `general-purpose` 子代理实现（可 `run_in_background` 并行多角色），两阶段评审（spec + 质量）后合并。
-- **B. 手动执行**：用户自行按任务实现，我负责评审/答疑。
-- 注：T8/T17 等服务器写操作，无论哪种方式都需在对应步骤前单独显式确认。
+### LA9 词本级统计 UI
+- 目标：统计 Tab 按当前词本展示（复用 LA6）。
+- commit：`feat(ui): per-wordbook stats UI`
+
+## Phase B — 迁移到服务器（Django 后端 + gesp SSO + 部署）
+
+### TB1 后端脚手架（Django + DRF + SimpleJWT + CORS）
+### TB2 数据模型（对齐 LA 字段；user_id 用 BigIntegerField，无 FK）
+### TB3 JWT 校验（SSO：校验 gesp 签发的 JWT，注入 user_id）
+### TB4 词本/单词/进度/统计 API
+### TB5 内置词表导入（开放授权源；版权安全）
+### TB6 DAL 换 HTTP API 实现（替换 asyncStorageRepo，接 gesp 登录拿 JWT）
+### TB7 旧数据迁移（本地 AsyncStorage → 服务器 learning 库，幂等）
+### TB8 建库 + 部署（⚠️ 需显式确认：CREATE DATABASE learning / USER / GRANT / migrate / gunicorn / nginx 子域 + HTTPS / CORS）
+### TB9 实时同步 + 离线兜底（可选增强）
+
+## 执行方式
+- 本地可测任务（LA1–LA9、TB1–TB5 后端单测）按 TDD 直接推进。
+- 任何服务器写操作（TB8 等）执行前单独显式确认。
