@@ -1,18 +1,18 @@
-import React, { useState, useRef } from 'react';
-import {
-  StyleSheet,
-  TouchableOpacity,
-  View,
-  Text,
-  Animated,
-  Platform,
-  ScrollView,
-} from 'react-native';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import useColors from './useColors';
 import type { Word } from '@/lib/data';
-import { speakWord } from '@/lib/speech';
 import { LanguageConfig } from '@/lib/languages';
+import { speakWord } from '@/lib/speech';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import React, { useRef, useState } from 'react';
+import {
+    Animated,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import useColors from './useColors';
 
 type Props = {
   word: Word;

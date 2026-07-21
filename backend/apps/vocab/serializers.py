@@ -18,7 +18,7 @@ class WordbookSerializer(serializers.ModelSerializer):
 class WordSerializer(serializers.ModelSerializer):
     class Meta:
         model = Word
-        fields = ["id", "word", "translation", "pronunciation"]
+        fields = ["id", "word", "translation", "pronunciation", "definitions", "phrases", "examples"]
 
 
 class WordbookWordSerializer(serializers.ModelSerializer):

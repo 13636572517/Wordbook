@@ -16,6 +16,7 @@ export interface Wordbook {
   type: WordbookType;
   source?: string;
   createdAt: number;
+  wordCount?: number; // 服务器端返回，避免前端拉全量单词计数
 }
 
 export interface WordExample {

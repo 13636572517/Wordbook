@@ -1,22 +1,24 @@
-import React, { useState, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-} from 'react-native';
+import { useSession } from '@/components/SessionProvider';
+import useColors from '@/components/useColors';
+import type { Wordbook } from '@/lib/data';
+import { repo } from '@/lib/data';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import React, { useCallback, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import useColors from '@/components/useColors';
-import { repo } from '@/lib/data';
-import type { Wordbook } from '@/lib/data';
-import { useSession } from '@/components/SessionProvider';
+
+const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 
 export default function LibraryScreen() {
   const colors = useColors();
@@ -24,6 +26,7 @@ export default function LibraryScreen() {
   const {
     wordbook,
     wordbooks,
+    isAdmin,
     setActiveWordbook,
     createWordbook,
     refreshBooks,
@@ -35,9 +38,16 @@ export default function LibraryScreen() {
 
   const load = useCallback(async () => {
     const c: Record<string, number> = {};
-    for (const wb of wordbooks) {
-      const words = await repo.getWordsByWordbook(wb.id);
-      c[wb.id] = words.length;
+    if (USE_CLOUD) {
+      // 云端模式：直接用服务器返回的 word_count，避免逐词本拉全量单词
+      for (const wb of wordbooks) {
+        c[wb.id] = wb.wordCount ?? 0;
+      }
+    } else {
+      for (const wb of wordbooks) {
+        const words = await repo.getWordsByWordbook(wb.id);
+        c[wb.id] = words.length;
+      }
     }
     setCounts(c);
     setLoading(false);
@@ -158,8 +168,8 @@ export default function LibraryScreen() {
             customBooks.map(renderBook)
           )}
 
-          {/* Create new wordbook */}
-          {showCreate ? (
+          {/* Create new wordbook (cloud mode: admin only) */}
+          {(!USE_CLOUD || isAdmin) && (showCreate ? (
             <View style={[styles.createCard, { backgroundColor: colors.card, borderColor: colors.tint }]}>
               <TextInput
                 style={[
@@ -205,7 +215,7 @@ export default function LibraryScreen() {
                 新建自定义词本
               </Text>
             </TouchableOpacity>
-          )}
+          ))}
         </ScrollView>
       )}
     </View>

@@ -16,6 +16,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
         {/* PWA */}
         <meta name="theme-color" content="#0D0D0D" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <link rel="manifest" href="/manifest.json" />
 
         {/* iOS PWA */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -23,16 +24,16 @@ export default function Root({ children }: { children: React.ReactNode }) {
           name="apple-mobile-web-app-status-bar-style"
           content="black-translucent"
         />
-        <meta name="apple-mobile-web-app-title" content="WordHoard" />
-        <link rel="apple-touch-icon" href="/icon.png" />
+        <meta name="apple-mobile-web-app-title" content="御算词擎" />
+        <link rel="apple-touch-icon" href="/icons/icon-1024.png" />
 
         {/* Android PWA */}
-        <meta name="application-name" content="WordHoard" />
+        <meta name="application-name" content="御算词擎" />
 
         {/* Description */}
         <meta
           name="description"
-          content="WordHoard - 智能背单词工具，支持多词本、SM-2 复习调度、薄弱词重练"
+          content="御算词擎 - 英语词汇学习工具，支持多词本、SM-2 复习调度、薄弱词重练、进度云端同步"
         />
 
         <ScrollViewStyleReset />

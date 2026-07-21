@@ -9,8 +9,9 @@ const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 
 export const repo = USE_CLOUD ? httpRepo : asyncStorageRepo;
 
-export * from './types';
-export * from './repo';
-export { memoryRepo } from './memoryRepo';
 export { asyncStorageRepo } from './asyncStorageRepo';
-export { httpRepo, login, isLoggedIn, clearToken, fetchDueWords, fetchStats, postStudyLogs, searchWords } from './httpRepo';
+export { clearToken, fetchDueWords, fetchStats, httpRepo, isLoggedIn, login, postStudyLogs, searchWords } from './httpRepo';
+export { memoryRepo } from './memoryRepo';
+export * from './repo';
+export * from './types';
+

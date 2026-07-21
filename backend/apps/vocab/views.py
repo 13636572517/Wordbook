@@ -14,6 +14,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .admin_check import is_admin_user
 from .models import StudyLog, UserWordProgress, Word, Wordbook, WordbookWord
 from .serializers import (
     ProgressUpdateItem,
@@ -40,8 +41,10 @@ class WordbookViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     def create(self, request):
-        """创建自定义词本。"""
+        """创建词本（仅管理员）。"""
         user_id = request.user.id
+        if not is_admin_user(user_id):
+            return Response({"error": "仅管理员可以创建词本"}, status=403)
         name = request.data.get("name", "").strip()
         if not name:
             return Response({"error": "name 不能为空"}, status=400)
@@ -82,7 +85,23 @@ class WordbookViewSet(viewsets.ViewSet):
             return Response({"error": "词本不存在"}, status=404)
 
         if request.method == "GET":
-            links = WordbookWord.objects.filter(wordbook=wb).select_related("word")
+            links = WordbookWord.objects.filter(wordbook=wb).select_related("word").order_by("id")
+            # slim=1: 省略 definitions/phrases/examples 大字段（测验流程用，大幅减小响应）
+            if request.query_params.get("slim") == "1":
+                data = [
+                    {
+                        "wordbook_id": link.wordbook_id,
+                        "word_id": link.word_id,
+                        "word_detail": {
+                            "id": link.word.id,
+                            "word": link.word.word,
+                            "translation": link.word.translation,
+                            "pronunciation": link.word.pronunciation,
+                        },
+                    }
+                    for link in links
+                ]
+                return Response(data)
             serializer = WordbookWordSerializer(links, many=True)
             return Response(serializer.data)
 
@@ -288,3 +307,51 @@ class WordViewSet(viewsets.ViewSet):
         except Word.DoesNotExist:
             return Response({"error": "单词不存在"}, status=404)
         return Response(WordSerializer(word).data)
+
+
+class MeView(APIView):
+    """当前用户信息（含管理员状态）。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user_id = request.user.id
+        return Response({
+            "user_id": user_id,
+            "is_admin": is_admin_user(user_id),
+        })
+
+
+class EnrichView(APIView):
+    """一键补全释义（仅管理员，仅网页版调用）。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """获取补全进度。"""
+        if not is_admin_user(request.user.id):
+            return Response({"error": "仅管理员可查看"}, status=403)
+        from .enrich_service import get_progress
+        return Response(get_progress())
+
+    def post(self, request):
+        """启动补全任务。"""
+        if not is_admin_user(request.user.id):
+            return Response({"error": "仅管理员可以运行补全"}, status=403)
+        from .enrich_service import start_task
+        result = start_task()
+        if not result["started"]:
+            return Response(result, status=409)
+        return Response(result, status=202)
+
+
+class EnrichStopView(APIView):
+    """停止补全任务（仅管理员）。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not is_admin_user(request.user.id):
+            return Response({"error": "仅管理员可以操作"}, status=403)
+        from .enrich_service import stop_task
+        return Response(stop_task())

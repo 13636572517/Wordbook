@@ -51,6 +51,19 @@ class Word(models.Model):
     word = models.CharField(max_length=120, unique=True)
     translation = models.TextField()
     pronunciation = models.CharField(max_length=120, null=True, blank=True)
+    # 词典补全字段（一键补全释义写入）
+    definitions = models.JSONField(
+        null=True, blank=True,
+        help_text='[{"pos": "n.", "definition": "..."}]',
+    )
+    phrases = models.JSONField(
+        null=True, blank=True,
+        help_text='[{"phrase": "...", "meaning": "..."}]',
+    )
+    examples = models.JSONField(
+        null=True, blank=True,
+        help_text='[{"en": "...", "zh": "..."}]',
+    )
 
     class Meta:
         db_table = "words"

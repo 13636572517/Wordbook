@@ -1,26 +1,26 @@
-import React, { useState, useCallback, useRef } from 'react';
-import {
-  StyleSheet,
-  TouchableOpacity,
-  View,
-  Text,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
-import { router } from 'expo-router';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
 import WordForm from '@/components/WordForm';
-import { repo } from '@/lib/data';
 import type { Word, WordDefinition, WordExample, WordPhrase } from '@/lib/data';
+import { repo } from '@/lib/data';
+import { formatChineseSummary, lookupWord, type DictionaryResult } from '@/lib/dictionary';
 import { lookupIpa } from '@/lib/ipaData';
 import { getLanguageByCode } from '@/lib/languages';
-import { useSession } from '@/components/SessionProvider';
-import { lookupWord, formatChineseSummary, type DictionaryResult } from '@/lib/dictionary';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { router } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ENGLISH = getLanguageByCode('en');
 

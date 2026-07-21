@@ -86,10 +86,10 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"  系统词本已存在: {wb.name} (id={wb.id})")
 
-        # 4. 批量导入单词
+        # 4. 批量导入单词（大小写不敏感去重，MySQL ci collation 下 May/may 视为重复）
         words_to_create = []
         existing_words = set(
-            Word.objects.filter(
+            w.lower() for w in Word.objects.filter(
                 word__in=[s["word"] for s in seed_words]
             ).values_list("word", flat=True)
         )
@@ -97,7 +97,7 @@ class Command(BaseCommand):
         new_count = 0
         for item in seed_words:
             w = item["word"].strip()
-            if not w or w in existing_words:
+            if not w or w.lower() in existing_words:
                 continue
             pronunciation = ipa_map.get(w.lower())
             words_to_create.append(Word(
@@ -105,7 +105,7 @@ class Command(BaseCommand):
                 translation=item["translation"],
                 pronunciation=pronunciation,
             ))
-            existing_words.add(w)
+            existing_words.add(w.lower())
             new_count += 1
 
         if words_to_create:
@@ -130,7 +130,7 @@ class Command(BaseCommand):
         all_words = Word.objects.filter(
             word__in=[s["word"].strip() for s in seed_words]
         )
-        word_id_map = {w.word: w.id for w in all_words}
+        word_id_map = {w.word.lower(): w.id for w in all_words}
 
         existing_links = set(
             WordbookWord.objects.filter(wordbook=wb).values_list("word_id", flat=True)
@@ -138,7 +138,7 @@ class Command(BaseCommand):
         links_to_create = []
         for item in seed_words:
             w = item["word"].strip()
-            wid = word_id_map.get(w)
+            wid = word_id_map.get(w.lower())
             if wid and wid not in existing_links:
                 links_to_create.append(WordbookWord(wordbook=wb, word_id=wid))
                 existing_links.add(wid)

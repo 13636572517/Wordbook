@@ -1,41 +1,60 @@
-import React, { useState, useCallback, useRef } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import EnrichModal from '@/components/EnrichModal';
+import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
-import { repo } from '@/lib/data';
 import type { Word } from '@/lib/data';
+import { repo } from '@/lib/data';
 import { lookupWord } from '@/lib/dictionary';
-import { speakWord } from '@/lib/speech';
 import { getLanguageByCode } from '@/lib/languages';
+import { speakWord } from '@/lib/speech';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useFocusEffect } from '@react-navigation/native';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ENGLISH = getLanguageByCode('en');
+const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
+
+/** 桌面网页版检测（排除手机 PWA / 小屏） */
+function isDesktopWeb(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  if (window.matchMedia?.('(display-mode: standalone)').matches) return false;
+  return window.innerWidth >= 768;
+}
 
 export default function WordbookDetailScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { isAdmin } = useSession();
   const [words, setWords] = useState<Word[]>([]);
   const [loading, setLoading] = useState(true);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [enrichModalVisible, setEnrichModalVisible] = useState(false);
   const batchCancelRef = useRef(false);
+
+  // 云端模式：服务器端补全仅在桌面网页版 + 管理员可用
+  const showCloudEnrich = USE_CLOUD && isAdmin && isDesktopWeb();
 
   const loadWords = useCallback(async () => {
     if (!id) return;
-    const ws = await repo.getWordsByWordbook(id);
+    // 云端模式：详情页需要完整释义数据；本地模式走 repo
+    const ws = USE_CLOUD
+      ? await (await import('@/lib/data/httpRepo')).fetchWordbookWordsFull(id)
+      : await repo.getWordsByWordbook(id);
     // Sort alphabetically
     ws.sort((a, b) => a.word.localeCompare(b.word));
     setWords(ws);
@@ -165,22 +184,25 @@ export default function WordbookDetailScreen() {
             >
               <FontAwesome name="volume-up" size={16} color={colors.tint} />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.enrichBtn, { backgroundColor: hasEnrich ? colors.border : colors.tint }]}
-              onPress={() => enrichWord(item)}
-              disabled={isEnriching || batchRunning}
-              activeOpacity={0.6}
-            >
-              {isEnriching ? (
-                <ActivityIndicator size="small" color={hasEnrich ? colors.subtitle : '#0D0D0D'} />
-              ) : (
-                <FontAwesome
-                  name={hasEnrich ? 'refresh' : 'magic'}
-                  size={13}
-                  color={hasEnrich ? colors.subtitle : '#0D0D0D'}
-                />
-              )}
-            </TouchableOpacity>
+            {/* 单词补全按钮：云端模式由服务器端批量补全，不显示客户端按钮 */}
+            {!USE_CLOUD && (
+              <TouchableOpacity
+                style={[styles.enrichBtn, { backgroundColor: hasEnrich ? colors.border : colors.tint }]}
+                onPress={() => enrichWord(item)}
+                disabled={isEnriching || batchRunning}
+                activeOpacity={0.6}
+              >
+                {isEnriching ? (
+                  <ActivityIndicator size="small" color={hasEnrich ? colors.subtitle : '#0D0D0D'} />
+                ) : (
+                  <FontAwesome
+                    name={hasEnrich ? 'refresh' : 'magic'}
+                    size={13}
+                    color={hasEnrich ? colors.subtitle : '#0D0D0D'}
+                  />
+                )}
+              </TouchableOpacity>
+            )}
             <FontAwesome
               name={isExpanded ? 'chevron-up' : 'chevron-down'}
               size={12}
@@ -235,7 +257,9 @@ export default function WordbookDetailScreen() {
         {isExpanded && !hasEnrich && (
           <View style={[styles.detailBlock, { borderTopColor: colors.border }]}>
             <Text style={[styles.noEnrich, { color: colors.pinyin }]}>
-              暂无详细释义，点击右侧 ✨ 按钮自动补全
+              {USE_CLOUD
+                ? '暂无详细释义，管理员可通过顶部“一键补全释义”批量补全'
+                : '暂无详细释义，点击右侧 ✨ 按钮自动补全'}
             </Text>
           </View>
         )}
@@ -270,33 +294,58 @@ export default function WordbookDetailScreen() {
       </View>
 
       {/* Batch enrich bar */}
-      <View style={[styles.batchBar, { borderColor: colors.border }]}>
-        {batchRunning ? (
-          <View style={styles.batchProgress}>
-            <ActivityIndicator size="small" color={colors.tint} />
-            <Text style={[styles.batchText, { color: colors.subtitle }]}>
-              补全中 {batchProgress.done}/{batchProgress.total}
-            </Text>
-            <TouchableOpacity
-              onPress={() => { batchCancelRef.current = true; }}
-              activeOpacity={0.6}
-            >
-              <Text style={[styles.batchCancel, { color: '#E5484D' }]}>停止</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
+      {showCloudEnrich ? (
+        /* 云端模式：服务器端补全（弹窗展示进度） */
+        <View style={[styles.batchBar, { borderColor: colors.border }]}>
           <TouchableOpacity
             style={[styles.batchBtn, { backgroundColor: colors.tint }]}
-            onPress={batchEnrich}
+            onPress={() => setEnrichModalVisible(true)}
             activeOpacity={0.7}
           >
             <FontAwesome name="magic" size={14} color="#0D0D0D" />
             <Text style={styles.batchBtnText}>
-              一键补全缺失释义（{words.length - enrichedCount} 个）
+              一键补全释义（服务器端）
             </Text>
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      ) : !USE_CLOUD ? (
+        /* 本地模式：客户端补全 */
+        <View style={[styles.batchBar, { borderColor: colors.border }]}>
+          {batchRunning ? (
+            <View style={styles.batchProgress}>
+              <ActivityIndicator size="small" color={colors.tint} />
+              <Text style={[styles.batchText, { color: colors.subtitle }]}>
+                补全中 {batchProgress.done}/{batchProgress.total}
+              </Text>
+              <TouchableOpacity
+                onPress={() => { batchCancelRef.current = true; }}
+                activeOpacity={0.6}
+              >
+                <Text style={[styles.batchCancel, { color: '#E5484D' }]}>停止</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.batchBtn, { backgroundColor: colors.tint }]}
+              onPress={batchEnrich}
+              activeOpacity={0.7}
+            >
+              <FontAwesome name="magic" size={14} color="#0D0D0D" />
+              <Text style={styles.batchBtnText}>
+                一键补全缺失释义（{words.length - enrichedCount} 个）
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : null}
+      {/* 云端补全进度弹窗 */}
+      {showCloudEnrich && (
+        <EnrichModal
+          visible={enrichModalVisible}
+          onClose={() => setEnrichModalVisible(false)}
+          onFinished={() => loadWords()}
+        />
+      )}
 
       {/* Word list */}
       {loading ? (

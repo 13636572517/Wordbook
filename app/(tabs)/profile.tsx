@@ -1,26 +1,28 @@
-import React, { useState, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ScrollView,
-  Modal,
-} from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
 import { repo } from '@/lib/data';
-import { useSession } from '@/components/SessionProvider';
 import { getWordbookStats } from '@/lib/data/stats';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useState } from 'react';
+import {
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// 云端模式开关（与 lib/data/index.ts 保持一致）
+const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, users, wordbook, wordbooks, switchUser, createUser } =
+  const { user, users, wordbook, wordbooks, switchUser, createUser, logout } =
     useSession();
   const [totalStats, setTotalStats] = useState({
     total: 0,
@@ -97,7 +99,7 @@ export default function ProfileScreen() {
         {/* User Card */}
         <TouchableOpacity
           style={[styles.userCard, { backgroundColor: colors.card }]}
-          onPress={() => setShowUserModal(true)}
+          onPress={() => !USE_CLOUD && setShowUserModal(true)}
           activeOpacity={0.7}
         >
           <View style={[styles.avatar, { backgroundColor: colors.tint }]}>
@@ -108,14 +110,16 @@ export default function ProfileScreen() {
               {user?.username}
             </Text>
             <Text style={[styles.userHint, { color: colors.subtitle }]}>
-              点击切换账户 / 新建账户
+              {USE_CLOUD ? 'GESP 云端账户，进度云端同步' : '点击切换账户 / 新建账户'}
             </Text>
           </View>
-          <FontAwesome
-            name="chevron-right"
-            size={16}
-            color={colors.subtitle}
-          />
+          {!USE_CLOUD && (
+            <FontAwesome
+              name="chevron-right"
+              size={16}
+              color={colors.subtitle}
+            />
+          )}
         </TouchableOpacity>
 
         {/* Learning Overview */}
@@ -164,57 +168,76 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
-        {/* Account List Info */}
-        <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>
-          账户列表（{users.length}）
-        </Text>
-        {users.map((u) => (
-          <View
-            key={u.id}
-            style={[
-              styles.accountRow,
-              {
-                backgroundColor: colors.card,
-                borderColor:
-                  u.id === user?.id ? colors.tint : colors.border,
-                borderWidth: u.id === user?.id ? 1.5 : 1,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.miniAvatar,
-                {
-                  backgroundColor:
-                    u.id === user?.id ? colors.tint : colors.border,
-                },
-              ]}
-            >
-              <Text style={styles.miniAvatarText}>
-                {u.username.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <Text style={[styles.accountName, { color: colors.text }]}>
-              {u.username}
+        {/* Account List Info（仅本地模式）*/}
+        {!USE_CLOUD && (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>
+              账户列表（{users.length}）
             </Text>
-            {u.id === user?.id && (
-              <Text style={[styles.currentBadge, { color: colors.tint }]}>
-                当前
-              </Text>
-            )}
-          </View>
-        ))}
+            {users.map((u) => (
+              <View
+                key={u.id}
+                style={[
+                  styles.accountRow,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor:
+                      u.id === user?.id ? colors.tint : colors.border,
+                    borderWidth: u.id === user?.id ? 1.5 : 1,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.miniAvatar,
+                    {
+                      backgroundColor:
+                        u.id === user?.id ? colors.tint : colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={styles.miniAvatarText}>
+                    {u.username.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={[styles.accountName, { color: colors.text }]}>
+                  {u.username}
+                </Text>
+                {u.id === user?.id && (
+                  <Text style={[styles.currentBadge, { color: colors.tint }]}>
+                    当前
+                  </Text>
+                )}
+              </View>
+            ))}
+          </>
+        )}
+
+        {/* 云端模式：退出登录 / 切换账号 */}
+        {USE_CLOUD && (
+          <TouchableOpacity
+            style={[styles.logoutBtn, { borderColor: '#E05252' }]}
+            onPress={logout}
+            activeOpacity={0.7}
+          >
+            <FontAwesome name="sign-out" size={16} color="#E05252" />
+            <Text style={styles.logoutText}>退出登录 / 切换账号</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Future: SSO Login */}
-        <View style={[styles.ssoHint, { borderColor: colors.border }]}>
-          <FontAwesome name="cloud" size={16} color={colors.subtitle} />
-          <Text style={[styles.ssoText, { color: colors.subtitle }]}>
-            云端账户同步（即将上线）
-          </Text>
-        </View>
+        {!USE_CLOUD && (
+          <View style={[styles.ssoHint, { borderColor: colors.border }]}>
+            <FontAwesome name="cloud" size={16} color={colors.subtitle} />
+            <Text style={[styles.ssoText, { color: colors.subtitle }]}>
+              云端账户同步（即将上线）
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
-      {/* User Switch/Create Modal */}
+      {/* User Switch/Create Modal（仅本地模式）*/}
+      {!USE_CLOUD && (
       <Modal
         visible={showUserModal}
         transparent
@@ -298,6 +321,7 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+      )}
     </View>
   );
 }
@@ -454,6 +478,21 @@ const styles = StyleSheet.create({
   },
   ssoText: {
     fontSize: 14,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 28,
+    paddingVertical: 15,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  logoutText: {
+    color: '#E05252',
+    fontSize: 16,
+    fontWeight: '700',
   },
   // Modal styles
   modalOverlay: {

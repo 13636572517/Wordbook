@@ -23,6 +23,7 @@ import { useSession } from '@/components/SessionProvider';
 import FlashCard from '@/components/FlashCard';
 
 const ENGLISH = getLanguageByCode('en');
+const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 const GRADES: { grade: Grade; label: string; color: string }[] = [
   { grade: 0, label: 'Again', color: '#E5484D' },
   { grade: 1, label: 'Hard', color: '#F5A623' },
@@ -57,6 +58,19 @@ export default function HomeScreen() {
     setIsFlipped(false);
     setCardKey((k) => k + 1);
     setLoading(false);
+    // 云端模式：slim 词表不含释义大字段，选中单词后异步拉取
+    // 完整数据（释义/词组/例句）合并到卡片，不阻塞显示
+    if (USE_CLOUD && w) {
+      const wid = w.id;
+      (async () => {
+        try {
+          const { fetchWordDetail } = await import('@/lib/data/httpRepo');
+          const full = await fetchWordDetail(wid);
+          // 仅当还是同一张卡时才更新，避免旧响应覆盖新词
+          setWord((cur) => (cur && cur.id === wid ? { ...cur, ...full } : cur));
+        } catch { /* 释义加载失败不影响基本学习 */ }
+      })();
+    }
   }, [user, wordbook]);
 
   useFocusEffect(

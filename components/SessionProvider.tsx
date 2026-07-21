@@ -1,30 +1,33 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-} from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  ActivityIndicator,
-  TouchableOpacity,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import useColors from './useColors';
+import type { User, Wordbook } from '@/lib/data';
 import { repo } from '@/lib/data';
 import { seedBuiltInWordbooks } from '@/lib/data/seedWordbooks';
 import {
-  loadActiveUser,
-  saveActiveUser,
-  loadActiveWordbook,
-  saveActiveWordbook,
+    loadActiveUser,
+    loadActiveWordbook,
+    saveActiveUser,
+    saveActiveWordbook,
 } from '@/lib/data/session';
-import type { User, Wordbook } from '@/lib/data';
+import React, {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useState,
+} from 'react';
+import {
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import useColors from './useColors';
+
+// 云端模式开关（与 lib/data/index.ts 保持一致）
+const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 
 type SessionValue = {
   user: User | null;
@@ -32,11 +35,13 @@ type SessionValue = {
   users: User[];
   wordbooks: Wordbook[];
   loading: boolean;
+  isAdmin: boolean;
   setActiveWordbook: (id: string) => Promise<void>;
   switchUser: (id: string) => Promise<void>;
   createUser: (name: string) => Promise<void>;
   createWordbook: (name: string) => Promise<void>;
   refreshBooks: () => Promise<void>;
+  logout: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -53,6 +58,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [wordbooks, setWordbooks] = useState<Wordbook[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const reloadBooks = useCallback(async (): Promise<Wordbook[]> => {
     const wbs = await repo.listWordbooks();
@@ -67,33 +73,65 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Idempotent: safe on every launch. Seeds built-in wordbooks once.
-      await seedBuiltInWordbooks(repo);
-      if (cancelled) return;
+      try {
+        // 云端模式：先检查登录状态，未登录则等待登录
+        if (USE_CLOUD) {
+          const { isLoggedIn } = await import('@/lib/data/httpRepo');
+          const loggedIn = await isLoggedIn();
+          if (!loggedIn) {
+            setLoading(false);
+            return; // 显示登录界面
+          }
+          // 获取管理员状态；若 token 过期（401 会清除 token）则回到登录界面
+          try {
+            const { fetchMe } = await import('@/lib/data/httpRepo');
+            const me = await fetchMe();
+            setIsAdmin(me.is_admin);
+          } catch {
+            const { isLoggedIn: stillLoggedIn } = await import('@/lib/data/httpRepo');
+            if (!(await stillLoggedIn())) {
+              if (!cancelled) setLoading(false);
+              return; // token 已失效 → 显示登录界面
+            }
+          }
+        }
 
-      const us = await repo.listUsers();
-      setUsers(us);
-      let activeUserId = await loadActiveUser();
-      if (!activeUserId || !us.find((u) => u.id === activeUserId)) {
-        const u = us.length > 0 ? us[0] : await repo.createUser('我');
-        activeUserId = u.id;
-        await saveActiveUser(activeUserId);
-        if (us.length === 0) setUsers([u]);
-      }
-      if (cancelled) return;
-      const uObj = us.find((x) => x.id === activeUserId) ?? (await repo.getUser(activeUserId));
-      setUser(uObj);
+        // Idempotent: safe on every launch. Seeds built-in wordbooks once.
+        if (!USE_CLOUD) await seedBuiltInWordbooks(repo);
+        if (cancelled) return;
 
-      const wbs = await reloadBooks();
-      if (cancelled) return;
-      let activeWbId = await loadActiveWordbook();
-      if (!activeWbId || !wbs.find((w) => w.id === activeWbId)) {
-        activeWbId = wbs.find((w) => w.type === 'system')?.id ?? wbs[0]?.id ?? null;
-        if (activeWbId) await saveActiveWordbook(activeWbId);
+        const us = await repo.listUsers();
+        setUsers(us);
+        let activeUserId = await loadActiveUser();
+        if (!activeUserId || !us.find((u) => u.id === activeUserId)) {
+          if (us.length === 0 && USE_CLOUD) {
+            // SSO 模式本地无用户缓存 → 回到登录界面
+            if (!cancelled) setLoading(false);
+            return;
+          }
+          const u = us.length > 0 ? us[0] : await repo.createUser('我');
+          activeUserId = u.id;
+          await saveActiveUser(activeUserId);
+          if (us.length === 0) setUsers([u]);
+        }
+        if (cancelled) return;
+        const uObj = us.find((x) => x.id === activeUserId) ?? (await repo.getUser(activeUserId));
+        setUser(uObj);
+
+        const wbs = await reloadBooks();
+        if (cancelled) return;
+        let activeWbId = await loadActiveWordbook();
+        if (!activeWbId || !wbs.find((w) => w.id === activeWbId)) {
+          activeWbId = wbs.find((w) => w.type === 'system')?.id ?? wbs[0]?.id ?? null;
+          if (activeWbId) await saveActiveWordbook(activeWbId);
+        }
+        if (cancelled) return;
+        setWordbook(wbs.find((w) => w.id === activeWbId) ?? null);
+        setLoading(false);
+      } catch {
+        // 任何未预期的错误都不能卡在加载界面
+        if (!cancelled) setLoading(false);
       }
-      if (cancelled) return;
-      setWordbook(wbs.find((w) => w.id === activeWbId) ?? null);
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -144,6 +182,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [user, reloadBooks, setActiveWordbook],
   );
 
+  // 退出登录（云端模式）：清除 token + 重置会话状态 → 回到登录界面
+  const logout = useCallback(async () => {
+    try {
+      const { clearToken } = await import('@/lib/data/httpRepo');
+      await clearToken();
+    } catch { /* ignore */ }
+    setUser(null);
+    setUsers([]);
+    setWordbook(null);
+    setWordbooks([]);
+    setIsAdmin(false);
+    setLoading(false);
+  }, []);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -152,7 +204,35 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) {
-    return (
+    return USE_CLOUD ? (
+      <CloudLoginScreen onSuccess={() => {
+        // 登录成功后重新加载会话
+        setLoading(true);
+        (async () => {
+          // 获取管理员状态
+          try {
+            const { fetchMe } = await import('@/lib/data/httpRepo');
+            const me = await fetchMe();
+            setIsAdmin(me.is_admin);
+          } catch { /* ignore */ }
+          const us = await repo.listUsers();
+          setUsers(us);
+          const u = us[0] ?? null;
+          if (u) {
+            setUser(u);
+            await saveActiveUser(u.id);
+          }
+          const wbs = await reloadBooks();
+          let activeWbId = await loadActiveWordbook();
+          if (!activeWbId || !wbs.find((w) => w.id === activeWbId)) {
+            activeWbId = wbs.find((w) => w.type === 'system')?.id ?? wbs[0]?.id ?? null;
+            if (activeWbId) await saveActiveWordbook(activeWbId);
+          }
+          setWordbook(wbs.find((w) => w.id === activeWbId) ?? null);
+          setLoading(false);
+        })();
+      }} />
+    ) : (
       <AuthScreen users={users} onPick={switchUser} onCreate={createUser} />
     );
   }
@@ -164,11 +244,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         users,
         wordbooks,
         loading,
+        isAdmin,
         setActiveWordbook,
         switchUser,
         createUser,
         createWordbook,
         refreshBooks,
+        logout,
       }}
     >
       {children}
@@ -238,6 +320,97 @@ function AuthScreen({
   );
 }
 
+/** 云端模式：GESP 账号密码登录界面 */
+function CloudLoginScreen({ onSuccess }: { onSuccess: () => void }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const colors = useColors();
+
+  const handleLogin = async () => {
+    if (!username.trim() || !password) return;
+    setBusy(true);
+    setError('');
+    try {
+      const { login } = await import('@/lib/data/httpRepo');
+      await login(username.trim(), password);
+      onSuccess();
+    } catch (e: any) {
+      setError(e.message || '登录失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={[styles.authWrap, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.authInner}>
+        <Text style={[styles.authTitle, { color: colors.text }]}>登录</Text>
+        <Text style={[styles.authSub, { color: colors.subtitle }]}>
+          使用语算 GESP 账号登录，学习进度云端同步
+        </Text>
+        <TextInput
+          style={[
+            styles.authInput,
+            {
+              backgroundColor: colors.inputBackground,
+              borderColor: colors.border,
+              color: colors.text,
+            },
+          ]}
+          value={username}
+          onChangeText={setUsername}
+          placeholder="账号"
+          placeholderTextColor={colors.pinyin}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TextInput
+          style={[
+            styles.authInput,
+            {
+              backgroundColor: colors.inputBackground,
+              borderColor: colors.border,
+              color: colors.text,
+            },
+          ]}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="密码"
+          placeholderTextColor={colors.pinyin}
+          secureTextEntry
+          onSubmitEditing={handleLogin}
+        />
+        {error ? (
+          <Text style={styles.loginError}>{error}</Text>
+        ) : null}
+        <TouchableOpacity
+          style={[
+            styles.authCreate,
+            {
+              backgroundColor: colors.tint,
+              opacity: username.trim() && password && !busy ? 1 : 0.4,
+            },
+          ]}
+          disabled={!username.trim() || !password || busy}
+          onPress={handleLogin}
+          activeOpacity={0.7}
+        >
+          {busy ? (
+            <ActivityIndicator size="small" color="#0D0D0D" />
+          ) : (
+            <Text style={styles.authCreateText}>登录</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
 const styles = StyleSheet.create({
   center: {
     flex: 1,
@@ -272,4 +445,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   authCreateText: { color: '#0D0D0D', fontSize: 17, fontWeight: '700' },
+  loginError: { color: '#E05252', fontSize: 14, marginBottom: 12, textAlign: 'center' },
 });

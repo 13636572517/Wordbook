@@ -13,7 +13,7 @@
  *  - Estimated time: ~30 min for 3500 unique words
  */
 
-import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
 // --- Types (mirrors lib/dictionary.ts) ---

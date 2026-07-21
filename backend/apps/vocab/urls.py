@@ -3,6 +3,8 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # 用户信息
+    path("me/", views.MeView.as_view()),
     # 词本
     path("wordbooks/", views.WordbookViewSet.as_view({"get": "list", "post": "create"})),
     path("wordbooks/<int:pk>/", views.WordbookViewSet.as_view({"delete": "destroy"})),
@@ -17,4 +19,7 @@ urlpatterns = [
     # 单词搜索
     path("words/search/", views.WordSearchView.as_view()),
     path("words/<int:pk>/", views.WordViewSet.as_view({"get": "retrieve"})),
+    # 一键补全释义（管理员）
+    path("enrich/", views.EnrichView.as_view()),
+    path("enrich/stop/", views.EnrichStopView.as_view()),
 ]
