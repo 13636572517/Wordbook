@@ -8,7 +8,12 @@ import {
 } from './sync';
 
 // Native export/import uses a fixed file in the app's document directory.
-const NATIVE_FILE = new File(Paths.document, 'progress.json');
+// NOTE: the File is created lazily (inside the native branch) because on Web
+// `Paths.document` is not a valid Directory object and constructing it at
+// module load time would throw `this.validatePath is not a function`.
+function getNativeFile(): File {
+  return new File(Paths.document, 'progress.json');
+}
 
 export async function exportProgress(snapshot: ProgressSnapshot): Promise<void> {
   const json = serializeSnapshot(snapshot);
@@ -22,8 +27,9 @@ export async function exportProgress(snapshot: ProgressSnapshot): Promise<void> 
     a.click();
     g.URL.revokeObjectURL(url);
   } else {
-    await NATIVE_FILE.write(json);
-    Alert.alert('已导出', `进度已保存到 ${NATIVE_FILE.uri ?? 'document 目录'}`);
+    const f = getNativeFile();
+    await f.write(json);
+    Alert.alert('已导出', `进度已保存到 ${f.uri ?? 'document 目录'}`);
   }
 }
 
@@ -33,7 +39,7 @@ export async function importProgress(): Promise<ProgressSnapshot> {
     json = await pickFileWeb();
   } else {
     try {
-      json = await NATIVE_FILE.text();
+      json = await getNativeFile().text();
     } catch {
       throw new SyncError('未找到导入文件，请先导出一次');
     }
