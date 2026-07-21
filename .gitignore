@@ -43,8 +43,8 @@ yarn-error.*
 # server credentials (NEVER push)
 server-info.md
 
-# downloaded word data (large, regenerable)
-data/
+# downloaded word data (large, regenerable, root only)
+/data/
 
 # dict cache progress (intermediate file)
 lib/data/dictCache.json
