@@ -51,6 +51,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="bar-chart" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="weak"
+        options={{
+          title: '薄弱词',
+          tabBarIcon: ({ color }) => <TabBarIcon name="exclamation-circle" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
