@@ -366,3 +366,15 @@ export async function getStreak(): Promise<StreakData> {
   const raw = await AsyncStorage.getItem(STREAK_KEY);
   return raw ? JSON.parse(raw) : { streak: 0, lastDate: '' };
 }
+
+export async function setStreak(data: StreakData): Promise<void> {
+  await AsyncStorage.setItem(STREAK_KEY, JSON.stringify(data));
+}
+
+// Replace all words for a language (used by progress import). Keeps the id counter
+// ahead of the highest imported id to avoid collisions.
+export async function importWords(languageCode: string, words: Word[]): Promise<void> {
+  await saveWords(languageCode, words);
+  const maxId = words.reduce((m, w) => Math.max(m, w.id), 0);
+  await AsyncStorage.setItem(idKey(languageCode), String(maxId));
+}
