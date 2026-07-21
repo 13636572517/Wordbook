@@ -70,7 +70,7 @@ export default function LibraryScreen() {
   const contentHeightRef = useRef(0);
   const layoutHeightRef = useRef(0);
   const scrollOffsetRef = useRef(0);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isDraggingRef = useRef(false);
 
   const thumbY = useRef(new Animated.Value(0)).current;

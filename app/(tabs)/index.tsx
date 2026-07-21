@@ -12,13 +12,32 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useColors from '@/components/useColors';
 import useLanguage from '@/components/useLanguage';
-import { getQuizWord, markReviewed, getWordCount, Word } from '@/lib/database';
+import {
+  getQuizWord,
+  reviewWord,
+  getWordCount,
+  getStats,
+  getStreak,
+  Word,
+  Grade,
+  StudyStats,
+  StreakData,
+} from '@/lib/database';
 import FlashCard from '@/components/FlashCard';
+
+const GRADES: { grade: Grade; label: string; color: string }[] = [
+  { grade: 0, label: 'Again', color: '#E5484D' },
+  { grade: 1, label: 'Hard', color: '#F5A623' },
+  { grade: 2, label: 'Good', color: '#30A46C' },
+  { grade: 3, label: 'Easy', color: '#3B82F6' },
+];
 
 export default function HomeScreen() {
   const [word, setWord] = useState<Word | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
   const [count, setCount] = useState(0);
+  const [stats, setStats] = useState<StudyStats | null>(null);
+  const [streak, setStreak] = useState<StreakData | null>(null);
   const [loading, setLoading] = useState(true);
   const [cardKey, setCardKey] = useState(0);
   const colors = useColors();
@@ -28,13 +47,17 @@ export default function HomeScreen() {
   const hasWordRef = useRef(false);
 
   const loadNext = useCallback(async (langCode: string) => {
-    const [w, c] = await Promise.all([
+    const [w, c, s, st] = await Promise.all([
       getQuizWord(langCode),
       getWordCount(langCode),
+      getStats(langCode),
+      getStreak(),
     ]);
     setWord(w);
     hasWordRef.current = w != null;
     setCount(c);
+    setStats(s);
+    setStreak(st);
     setIsFlipped(false);
     setCardKey((k) => k + 1);
     setLoading(false);
@@ -59,13 +82,15 @@ export default function HomeScreen() {
           setLoading(false);
         }
       })();
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }, [refreshLanguage, loadNext])
   );
 
-  const handleGotIt = async () => {
+  const handleGrade = async (grade: Grade) => {
     if (word && language) {
-      await markReviewed(language.code, word.id, true);
+      await reviewWord(language.code, word.id, grade);
       loadNext(language.code);
     }
   };
@@ -95,7 +120,7 @@ export default function HomeScreen() {
           <Text style={[styles.title, { color: colors.text }]}>Vocab</Text>
           {count > 0 && (
             <Text style={[styles.countBadge, { color: colors.pinyin }]}>
-              {count} {count === 1 ? 'word' : 'words'}
+              {count} words
             </Text>
           )}
         </View>
@@ -120,16 +145,43 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {stats && (
+        <View style={styles.statsRow}>
+          <StatChip
+            icon="fire"
+            value={String(streak?.streak ?? 0)}
+            label="天连续"
+            color={colors.tint}
+          />
+          <StatChip
+            icon="clock-o"
+            value={String(stats.due)}
+            label="待复习"
+            color="#F5A623"
+          />
+          <StatChip
+            icon="star"
+            value={String(stats.mastered)}
+            label="已掌握"
+            color="#30A46C"
+          />
+          <StatChip
+            icon="percent"
+            value={`${Math.round(stats.accuracy * 100)}%`}
+            label="正确率"
+            color="#3B82F6"
+          />
+        </View>
+      )}
+
       {!word ? (
         <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>
-            {language.flag}
-          </Text>
+          <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>🎉</Text>
           <Text style={[styles.emptyTitle, { color: colors.text }]}>
-            No words yet
+            All caught up!
           </Text>
           <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
-            Start building your {language.name} vocabulary
+            没有待复习的词了，明天再来看看～
           </Text>
           <TouchableOpacity
             style={[styles.emptyAddButton, { backgroundColor: colors.tint }]}
@@ -137,22 +189,31 @@ export default function HomeScreen() {
             activeOpacity={0.7}
           >
             <FontAwesome name="plus" size={16} color="#0D0D0D" />
-            <Text style={styles.emptyAddText}>Add your first word</Text>
+            <Text style={styles.emptyAddText}>Add a word</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.cardArea}>
-          <FlashCard key={cardKey} word={word} language={language} onFlip={setIsFlipped} />
+          <FlashCard
+            key={cardKey}
+            word={word}
+            language={language}
+            onFlip={setIsFlipped}
+          />
 
           {isFlipped ? (
-            <TouchableOpacity
-              style={[styles.gotItButton, { backgroundColor: colors.tint }]}
-              onPress={handleGotIt}
-              activeOpacity={0.7}
-            >
-              <FontAwesome name="check" size={15} color="#0D0D0D" />
-              <Text style={styles.gotItText}>Got It</Text>
-            </TouchableOpacity>
+            <View style={styles.gradeRow}>
+              {GRADES.map((g) => (
+                <TouchableOpacity
+                  key={g.grade}
+                  style={[styles.gradeButton, { backgroundColor: g.color }]}
+                  onPress={() => handleGrade(g.grade)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.gradeText}>{g.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           ) : (
             <Text style={[styles.hint, { color: colors.pinyin }]}>
               Tap the card to reveal
@@ -160,6 +221,26 @@ export default function HomeScreen() {
           )}
         </View>
       )}
+    </View>
+  );
+}
+
+function StatChip({
+  icon,
+  value,
+  label,
+  color,
+}: {
+  icon: React.ComponentProps<typeof FontAwesome>['name'];
+  value: string;
+  label: string;
+  color: string;
+}) {
+  return (
+    <View style={styles.chip}>
+      <FontAwesome name={icon} size={14} color={color} />
+      <Text style={[styles.chipValue, { color: '#E8E0D4' }]}>{value}</Text>
+      <Text style={styles.chipLabel}>{label}</Text>
     </View>
   );
 }
@@ -213,6 +294,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  chip: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#1A1814',
+    borderRadius: 12,
+    paddingVertical: 10,
+    marginHorizontal: 4,
+  },
+  chipValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  chipLabel: {
+    fontSize: 11,
+    color: '#9C9486',
+    marginTop: 1,
+  },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
@@ -231,6 +335,7 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     fontSize: 15,
     marginBottom: 28,
+    textAlign: 'center',
   },
   emptyAddButton: {
     flexDirection: 'row',
@@ -251,18 +356,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 40,
   },
-  gotItButton: {
+  gradeRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
-    marginTop: 16,
-    paddingHorizontal: 32,
+    marginTop: 18,
+    width: '100%',
+  },
+  gradeButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 12,
   },
-  gotItText: {
-    color: '#0D0D0D',
-    fontSize: 16,
+  gradeText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '700',
   },
   hint: {

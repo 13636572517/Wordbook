@@ -44,6 +44,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="book" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="stats"
+        options={{
+          title: '统计',
+          tabBarIcon: ({ color }) => <TabBarIcon name="bar-chart" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
