@@ -18,11 +18,33 @@ export interface Wordbook {
   createdAt: number;
 }
 
+export interface WordExample {
+  en: string;
+  zh?: string;
+}
+
+export interface WordPhrase {
+  phrase: string;
+  meaning: string;
+}
+
+export interface WordDefinition {
+  pos: string; // part of speech: 'noun', 'verb', 'adjective', etc.
+  definition: string;
+  example?: string;
+}
+
 export interface Word {
   id: ID;
   word: string;
   translation: string;
   pronunciation: string | null;
+  // Enriched fields (auto-fetched from dictionary API)
+  phonetic?: string; // IPA phonetic transcription
+  definitions?: WordDefinition[]; // detailed definitions by part of speech
+  phrases?: WordPhrase[]; // common phrases/collocations
+  examples?: WordExample[]; // example sentences
+  audioUrl?: string; // pronunciation audio URL
 }
 
 export interface WordbookWord {

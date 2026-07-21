@@ -73,6 +73,13 @@ function RootLayoutNav() {
               animation: 'slide_from_bottom',
             }}
           />
+          <Stack.Screen
+            name="wordbook-detail"
+            options={{
+              headerShown: false,
+              animation: 'slide_from_right',
+            }}
+          />
           <Stack.Screen name="+not-found" />
         </Stack>
       </SessionProvider>

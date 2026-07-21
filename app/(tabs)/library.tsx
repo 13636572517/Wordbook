@@ -10,6 +10,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useColors from '@/components/useColors';
@@ -21,18 +22,16 @@ export default function LibraryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const {
-    user,
     wordbook,
     wordbooks,
     setActiveWordbook,
     createWordbook,
     refreshBooks,
-    switchUser,
-    users,
   } = useSession();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
     const c: Record<string, number> = {};
@@ -49,8 +48,12 @@ export default function LibraryScreen() {
   }, [load]));
 
   const pick = (wb: Wordbook) => {
+    router.push({ pathname: '/wordbook-detail', params: { id: wb.id, name: wb.name } });
+  };
+
+  const setAsActive = (wb: Wordbook) => {
     setActiveWordbook(wb.id);
-    Alert.alert('已切换', `正在学习「${wb.name}」，去 Vocab 标签开始吧`);
+    Alert.alert('已切换', `正在学习「${wb.name}」，去学习标签开始吧`);
   };
 
   const remove = (wb: Wordbook) => {
@@ -74,21 +77,7 @@ export default function LibraryScreen() {
     if (!name) return;
     await createWordbook(name);
     setNewName('');
-  };
-
-  const switchUserPrompt = () => {
-    if (users.length <= 1) {
-      Alert.alert('账户', '当前只有一个账户');
-      return;
-    }
-    Alert.alert(
-      '切换账户',
-      '选择要登录的账户',
-      users.map((u) => ({
-        text: u.username + (u.id === user?.id ? '（当前）' : ''),
-        onPress: () => switchUser(u.id),
-      })),
-    );
+    setShowCreate(false);
   };
 
   const systemBooks = wordbooks.filter((w) => w.type === 'system');
@@ -112,17 +101,30 @@ export default function LibraryScreen() {
         <Text style={[styles.cardName, { color: colors.text }]}>{wb.name}</Text>
         <Text style={[styles.cardCount, { color: colors.subtitle }]}>
           {counts[wb.id] ?? 0} 词
+          {wb.id === wordbook?.id ? '  ·  当前学习' : ''}
         </Text>
       </View>
-      {wb.type === 'custom' && (
-        <TouchableOpacity
-          style={styles.delBtn}
-          onPress={() => remove(wb)}
-          activeOpacity={0.6}
-        >
-          <FontAwesome name="trash" size={18} color="#E5484D" />
-        </TouchableOpacity>
-      )}
+      <View style={styles.cardActions}>
+        {wb.id !== wordbook?.id && (
+          <TouchableOpacity
+            style={styles.setActiveBtn}
+            onPress={() => setAsActive(wb)}
+            activeOpacity={0.6}
+          >
+            <FontAwesome name="check-circle-o" size={18} color={colors.tint} />
+          </TouchableOpacity>
+        )}
+        {wb.type === 'custom' && (
+          <TouchableOpacity
+            style={styles.delBtn}
+            onPress={() => remove(wb)}
+            activeOpacity={0.6}
+          >
+            <FontAwesome name="trash" size={16} color="#E5484D" />
+          </TouchableOpacity>
+        )}
+        <FontAwesome name="chevron-right" size={13} color={colors.subtitle} />
+      </View>
     </TouchableOpacity>
   );
 
@@ -134,17 +136,7 @@ export default function LibraryScreen() {
       ]}
     >
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>单词本</Text>
-        <TouchableOpacity
-          style={styles.userChip}
-          onPress={switchUserPrompt}
-          activeOpacity={0.7}
-        >
-          <FontAwesome name="user" size={14} color={colors.tint} />
-          <Text style={[styles.userName, { color: colors.tint }]}>
-            {user?.username}
-          </Text>
-        </TouchableOpacity>
+        <Text style={[styles.title, { color: colors.text }]}>词本</Text>
       </View>
 
       {loading ? (
@@ -160,44 +152,62 @@ export default function LibraryScreen() {
           </Text>
           {customBooks.length === 0 ? (
             <Text style={[styles.emptyHint, { color: colors.subtitle }]}>
-              还没有自定义词本，下面新建一个吧
+              还没有自定义词本，点击下方按钮新建一个吧
             </Text>
           ) : (
             customBooks.map(renderBook)
           )}
+
+          {/* Create new wordbook */}
+          {showCreate ? (
+            <View style={[styles.createCard, { backgroundColor: colors.card, borderColor: colors.tint }]}>
+              <TextInput
+                style={[
+                  styles.createInput,
+                  {
+                    backgroundColor: colors.inputBackground,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
+                value={newName}
+                onChangeText={setNewName}
+                placeholder="输入词本名称…"
+                placeholderTextColor={colors.pinyin}
+                autoFocus
+              />
+              <View style={styles.createActions}>
+                <TouchableOpacity
+                  style={[styles.createConfirm, { backgroundColor: colors.tint, opacity: newName.trim() ? 1 : 0.4 }]}
+                  disabled={!newName.trim()}
+                  onPress={handleCreate}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.createConfirmText}>创建</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.createCancel}
+                  onPress={() => { setShowCreate(false); setNewName(''); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.createCancelText, { color: colors.subtitle }]}>取消</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.addBookCard, { borderColor: colors.border }]}
+              onPress={() => setShowCreate(true)}
+              activeOpacity={0.7}
+            >
+              <FontAwesome name="plus" size={20} color={colors.tint} />
+              <Text style={[styles.addBookText, { color: colors.tint }]}>
+                新建自定义词本
+              </Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
-
-      <View style={[styles.createBar, { borderColor: colors.border }]}>
-        <TextInput
-          style={[
-            styles.createInput,
-            {
-              backgroundColor: colors.inputBackground,
-              borderColor: colors.border,
-              color: colors.text,
-            },
-          ]}
-          value={newName}
-          onChangeText={setNewName}
-          placeholder="新建自定义词本名…"
-          placeholderTextColor={colors.pinyin}
-        />
-        <TouchableOpacity
-          style={[
-            styles.createBtn,
-            {
-              backgroundColor: colors.tint,
-              opacity: newName.trim() ? 1 : 0.4,
-            },
-          ]}
-          disabled={!newName.trim()}
-          onPress={handleCreate}
-          activeOpacity={0.7}
-        >
-          <FontAwesome name="plus" size={16} color="#0D0D0D" />
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -218,20 +228,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: -0.5,
-  },
-  userChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#2A2520',
-  },
-  userName: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   list: {
     paddingHorizontal: 20,
@@ -271,27 +267,66 @@ const styles = StyleSheet.create({
   delBtn: {
     padding: 8,
   },
-  createBar: {
+  cardActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  setActiveBtn: {
+    padding: 6,
+  },
+  addBookCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderTopWidth: 1,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    paddingVertical: 18,
+    marginTop: 16,
+  },
+  addBookText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  createCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 16,
+    marginTop: 16,
   },
   createInput: {
-    flex: 1,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+    marginBottom: 12,
   },
-  createBtn: {
-    width: 44,
-    height: 44,
+  createActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  createConfirm: {
+    flex: 1,
     borderRadius: 12,
+    paddingVertical: 13,
     alignItems: 'center',
-    justifyContent: 'center',
+  },
+  createConfirmText: {
+    color: '#0D0D0D',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  createCancel: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  createCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
