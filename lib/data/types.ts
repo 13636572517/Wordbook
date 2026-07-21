@@ -40,6 +40,7 @@ export interface UserWordProgress {
   due: number;
   correct: number;
   wrong: number;
+  lastReviewTs?: number; // last review timestamp, for streak (local phase; server adds study_logs)
 }
 
 export const DEFAULT_EF = 2.5;
