@@ -23,6 +23,9 @@ class MemoryRepo implements Repository {
     return this.users.get(id) ?? null;
   }
   async createUser(username: string): Promise<User> {
+    if ([...this.users.values()].some((u) => u.username === username)) {
+      throw new Error(`user already exists: ${username}`);
+    }
     const u: User = { id: genId(), username, createdAt: Date.now() };
     this.users.set(u.id, u);
     if (this.activeUserId === null) this.activeUserId = u.id;

@@ -33,6 +33,9 @@ class AsyncStorageRepo implements Repository {
   }
   async createUser(username: string): Promise<User> {
     const users = await read<User[]>(K.users, []);
+    if (users.some((u) => u.username === username)) {
+      throw new Error(`user already exists: ${username}`);
+    }
     const u: User = { id: genId(), username, createdAt: Date.now() };
     users.push(u);
     await write(K.users, users);
