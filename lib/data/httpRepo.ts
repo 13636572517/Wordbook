@@ -11,6 +11,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CreateWordbookInput, Repository, ListStudyLogsOpts } from './repo';
 import type { ID, User, UserWordProgress, Word, Wordbook, WordDefinition, WordExample, WordPhrase, StudyLog } from './types';
+import { DAILY_GOAL_DEFAULT } from './settings';
 
 // --- 配置 ---
 const API_BASE = __DEV__
@@ -370,18 +371,44 @@ export const httpRepo: Repository = {
     });
   },
 
-  // ===== Study logs (local-first) =====
-  // 云端模式经 postStudyLogs() 上报，本地 addStudyLog 在此为 no-op；
-  // listStudyLogs 云端真实实现待后端 migrate 后补充，当前返回空。
+  // ===== Study logs (cloud mode) =====
+  // 云端模式经 postStudyLogs() 上报；listStudyLogs 走 /study-logs/list/ 真实接口。
   async addStudyLog(_log: StudyLog): Promise<void> {
     // no-op: cloud path uses postStudyLogs()
   },
   async listStudyLogs(
-    _userId: ID,
-    _wordbookId?: ID,
-    _opts?: ListStudyLogsOpts,
+    userId: ID,
+    wordbookId?: ID,
+    opts?: ListStudyLogsOpts,
   ): Promise<StudyLog[]> {
-    return [];
+    const params = new URLSearchParams();
+    if (wordbookId) params.set('wordbook_id', toNum(wordbookId).toString());
+    if (opts?.sinceTs != null) params.set('since_ts', String(opts.sinceTs));
+    if (opts?.source) params.set('source', opts.source);
+    if (opts?.isNew != null) params.set('is_new', opts.isNew ? '1' : '0');
+    const qs = params.toString();
+    const data = await api<any[]>(`/study-logs/list/${qs ? '?' + qs : ''}`);
+    return data.map((item: any) => ({
+      userId: String(item.user_id),
+      wordbookId: toStr(item.wordbook_id),
+      wordId: toStr(item.word_id),
+      grade: item.grade,
+      ts: item.ts,
+      source: item.source,
+      isNew: !!item.is_new,
+    }));
+  },
+
+  // 每日新词上限（云端）：走 /settings/ 接口，按 user 隔离。
+  async getDailyNewWordGoal(userId: ID): Promise<number> {
+    const data = await api<any>('/settings/');
+    return Number(data.daily_new_word_goal) || DAILY_GOAL_DEFAULT;
+  },
+  async setDailyNewWordGoal(userId: ID, n: number): Promise<void> {
+    await api('/settings/', {
+      method: 'POST',
+      body: JSON.stringify({ daily_new_word_goal: n }),
+    });
   },
 };
 
@@ -452,7 +479,7 @@ export async function fetchStats(wordbookId?: ID) {
 
 /** 批量上报学习日志 */
 export async function postStudyLogs(
-  logs: { wordbookId: ID; wordId: ID; grade: number; ts: number }[],
+  logs: { wordbookId: ID; wordId: ID; grade: number; ts: number; source?: string; isNew?: boolean }[],
 ): Promise<void> {
   await api('/study-logs/', {
     method: 'POST',
@@ -462,6 +489,8 @@ export async function postStudyLogs(
         word_id: toNum(l.wordId),
         grade: l.grade,
         ts: l.ts,
+        source: l.source || 'study',
+        is_new: !!l.isNew,
       })),
     }),
   });

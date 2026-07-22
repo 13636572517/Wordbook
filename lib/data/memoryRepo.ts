@@ -107,6 +107,15 @@ class MemoryRepo implements Repository {
     });
   }
 
+  // 每日新词上限（测试用内存实现）
+  private dailyGoals = new Map<ID, number>();
+  async getDailyNewWordGoal(userId: ID): Promise<number> {
+    return this.dailyGoals.get(userId) ?? 20;
+  }
+  async setDailyNewWordGoal(userId: ID, n: number): Promise<void> {
+    this.dailyGoals.set(userId, n);
+  }
+
   // seed helpers (bulk writes for initial import performance)
   async bulkUpsertWords(words: Word[]): Promise<void> {
     for (const w of words) this.words.set(w.id, w);

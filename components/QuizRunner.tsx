@@ -115,7 +115,7 @@ export default function QuizRunner({
     await reviewWord(repo, user.id, wordbook.id, wordId, grade, now);
     if (USE_CLOUD) {
       await postStudyLogs([
-        { wordbookId: wordbook.id, wordId, grade, ts: now },
+        { wordbookId: wordbook.id, wordId, grade, ts: now, source: 'quiz' },
       ]);
     } else {
       await repo.addStudyLog({

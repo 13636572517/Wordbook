@@ -143,12 +143,34 @@ class StudyLog(models.Model):
     )
     grade = models.SmallIntegerField(help_text="SM-2 评分 0-5")
     ts = models.BigIntegerField(help_text="Unix ms 时间戳")
+    source = models.CharField(
+        max_length=20, default="study",
+        help_text="记录来源: study(学习)/quiz(测试)/review(复习)",
+    )
+    is_new = models.BooleanField(
+        default=False, db_index=True,
+        help_text="本次是否为新学单词(用于每日新词上限统计)",
+    )
 
     class Meta:
         db_table = "study_logs"
         indexes = [
             models.Index(fields=["user_id", "ts"], name="idx_log_user_ts"),
+            models.Index(fields=["user_id", "source"], name="idx_log_user_source"),
         ]
 
     def __str__(self):
         return f"user={self.user_id} word={self.word.word} grade={self.grade}"
+
+
+class UserSettings(models.Model):
+    """每用户全局设置（当前仅每日新词上限）。"""
+
+    user_id = models.BigIntegerField(db_index=True, unique=True)
+    daily_new_word_goal = models.IntegerField(default=20, help_text="每日新学单词数上限")
+
+    class Meta:
+        db_table = "user_settings"
+
+    def __str__(self):
+        return f"user={self.user_id} goal={self.daily_new_word_goal}"

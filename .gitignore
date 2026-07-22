@@ -42,6 +42,8 @@ yarn-error.*
 
 # server credentials (NEVER push)
 server-info.md
+server-credentials.json
+.deploy-secrets
 
 # downloaded word data (large, regenerable, root only)
 /data/

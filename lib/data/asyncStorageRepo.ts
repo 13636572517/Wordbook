@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Repository, CreateWordbookInput, ListStudyLogsOpts } from './repo';
 import type { ID, User, Wordbook, Word, UserWordProgress, WordbookWord, StudyLog } from './types';
 import { genId } from './types';
+import { getDailyNewWordGoal as localGetGoal, setDailyNewWordGoal as localSetGoal } from './settings';
 
 // Storage keys — aligned with the server `learning` schema tables.
 const K = {
@@ -155,6 +156,13 @@ class AsyncStorageRepo implements Repository {
       if (opts?.isNew !== undefined && (l.isNew === true) !== opts.isNew) return false;
       return true;
     });
+  }
+
+  async getDailyNewWordGoal(userId: ID): Promise<number> {
+    return localGetGoal(userId);
+  }
+  async setDailyNewWordGoal(userId: ID, n: number): Promise<void> {
+    return localSetGoal(userId, n);
   }
 
   // seed helpers (bulk writes, initial import performance)

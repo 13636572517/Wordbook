@@ -16,6 +16,9 @@ urlpatterns = [
     path("stats/", views.StatsView.as_view()),
     # 学习日志
     path("study-logs/", views.StudyLogView.as_view()),
+    path("study-logs/list/", views.StudyLogListView.as_view()),
+    # 用户设置（每日新词上限）
+    path("settings/", views.UserSettingsView.as_view()),
     # 单词搜索
     path("words/search/", views.WordSearchView.as_view()),
     path("words/<int:pk>/", views.WordViewSet.as_view({"get": "retrieve"})),

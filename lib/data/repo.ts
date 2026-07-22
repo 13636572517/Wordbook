@@ -49,6 +49,10 @@ export interface Repository {
   addStudyLog(log: StudyLog): Promise<void>;
   listStudyLogs(userId: ID, wordbookId?: ID, opts?: ListStudyLogsOpts): Promise<StudyLog[]>;
 
+  // 每日新词上限（每用户全局；云端走 UserSettings 表）
+  getDailyNewWordGoal(userId: ID): Promise<number>;
+  setDailyNewWordGoal(userId: ID, n: number): Promise<void>;
+
   // seed helpers (bulk writes for initial import performance)
   bulkUpsertWords(words: Word[]): Promise<void>;
   bulkSetMembership(wordbookId: ID, wordIds: ID[]): Promise<void>;

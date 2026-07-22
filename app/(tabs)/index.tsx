@@ -109,7 +109,7 @@ export default function HomeScreen() {
       await reviewWord(repo, user.id, wordbook.id, word.id, grade, now);
       // 修 StudyLog 断点：评分后上报学习日志（本地经 repo，云端经 httpRepo）
       if (USE_CLOUD) {
-        await postStudyLogs([{ wordbookId: wordbook.id, wordId: word.id, grade, ts: now }]);
+        await postStudyLogs([{ wordbookId: wordbook.id, wordId: word.id, grade, ts: now, source: 'study', isNew }]);
       } else {
         await repo.addStudyLog({
           userId: user.id,

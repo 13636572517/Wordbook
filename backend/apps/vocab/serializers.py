@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import StudyLog, UserWordProgress, Word, Wordbook, WordbookWord
+from .models import StudyLog, UserSettings, UserWordProgress, Word, Wordbook, WordbookWord
 
 
 class WordbookSerializer(serializers.ModelSerializer):
@@ -58,8 +58,15 @@ class ProgressUpdateItem(serializers.Serializer):
 class StudyLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudyLog
-        fields = ["id", "user_id", "wordbook_id", "word_id", "grade", "ts"]
+        fields = ["id", "user_id", "wordbook_id", "word_id", "grade", "ts", "source", "is_new"]
         read_only_fields = ["id", "user_id"]
+
+
+class UserSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserSettings
+        fields = ["user_id", "daily_new_word_goal"]
+        read_only_fields = ["user_id"]
 
 
 class StudyLogBatchSerializer(serializers.Serializer):

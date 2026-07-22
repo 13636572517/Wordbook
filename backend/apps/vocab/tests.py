@@ -7,7 +7,7 @@ import time
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from .models import UserWordProgress, Word, Wordbook, WordbookWord
+from .models import StudyLog, UserSettings, UserWordProgress, Word, Wordbook, WordbookWord
 
 
 def make_test_token(user_id: int) -> str:
@@ -153,3 +153,83 @@ class StatsAPITest(TestCase):
         self.assertEqual(data["total_reviews"], 4)
         self.assertEqual(data["accuracy"], 75.0)
         self.assertEqual(data["today_count"], 1)
+
+
+class StudyLogListAPITest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {make_test_token(1)}")
+        self.wb = Wordbook.objects.create(
+            owner_id=None, name="高中", level="highschool",
+            type="system", created_at=int(time.time() * 1000),
+        )
+        self.word = Word.objects.create(word="hello", translation="int. 你好")
+
+    def test_post_stores_source_and_is_new(self):
+        now_ms = int(time.time() * 1000)
+        resp = self.client.post("/api/study-logs/", {
+            "logs": [
+                {"wordbook_id": self.wb.id, "word_id": self.word.id, "grade": 4,
+                 "ts": now_ms, "source": "quiz", "is_new": True},
+            ]
+        }, format="json")
+        self.assertEqual(resp.status_code, 201)
+        log = StudyLog.objects.get()
+        self.assertEqual(log.source, "quiz")
+        self.assertTrue(log.is_new)
+
+    def test_list_filter_by_source_and_is_new(self):
+        now_ms = int(time.time() * 1000)
+        StudyLog.objects.create(user_id=1, wordbook=self.wb, word=self.word,
+                                 grade=4, ts=now_ms, source="study", is_new=False)
+        StudyLog.objects.create(user_id=1, wordbook=self.wb, word=self.word,
+                                 grade=2, ts=now_ms, source="quiz", is_new=True)
+        # 另一用户的记录不应泄露
+        StudyLog.objects.create(user_id=2, wordbook=self.wb, word=self.word,
+                                 grade=3, ts=now_ms, source="quiz", is_new=True)
+
+        # 全量
+        resp = self.client.get("/api/study-logs/list/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()), 2)
+
+        # 按 source 过滤
+        resp = self.client.get("/api/study-logs/list/?source=quiz")
+        self.assertEqual(len(resp.json()), 1)
+        self.assertEqual(resp.json()[0]["source"], "quiz")
+
+        # 按 is_new 过滤
+        resp = self.client.get("/api/study-logs/list/?is_new=1")
+        self.assertEqual(len(resp.json()), 1)
+        self.assertTrue(resp.json()[0]["is_new"])
+
+
+class UserSettingsAPITest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {make_test_token(7)}")
+
+    def test_get_default_and_update(self):
+        # 默认值
+        resp = self.client.get("/api/settings/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["daily_new_word_goal"], 20)
+
+        # 更新
+        resp = self.client.post("/api/settings/", {"daily_new_word_goal": 35}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["daily_new_word_goal"], 35)
+
+        # 再读应持久化
+        resp = self.client.get("/api/settings/")
+        self.assertEqual(resp.json()["daily_new_word_goal"], 35)
+
+        # 隔离：另一用户仍是默认
+        other = APIClient()
+        other.credentials(HTTP_AUTHORIZATION=f"Bearer {make_test_token(8)}")
+        resp = other.get("/api/settings/")
+        self.assertEqual(resp.json()["daily_new_word_goal"], 20)
+
+    def test_invalid_goal_rejected(self):
+        resp = self.client.post("/api/settings/", {"daily_new_word_goal": 0}, format="json")
+        self.assertEqual(resp.status_code, 400)

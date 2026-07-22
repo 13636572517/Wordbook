@@ -15,10 +15,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .admin_check import is_admin_user
-from .models import StudyLog, UserWordProgress, Word, Wordbook, WordbookWord
+from .models import StudyLog, UserSettings, UserWordProgress, Word, Wordbook, WordbookWord
 from .serializers import (
     ProgressUpdateItem,
     StudyLogSerializer,
+    UserSettingsSerializer,
     UserWordProgressSerializer,
     WordbookSerializer,
     WordbookWordSerializer,
@@ -277,9 +278,72 @@ class StudyLogView(APIView):
                 word_id=log["word_id"],
                 grade=log["grade"],
                 ts=log["ts"],
+                source=log.get("source", "study"),
+                is_new=bool(log.get("is_new", False)),
             ))
         StudyLog.objects.bulk_create(objs)
         return Response({"created": len(objs)}, status=201)
+
+
+class StudyLogListView(APIView):
+    """查询学习日志（今日报告 / 每日新词上限统计用）。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user_id = request.user.id
+        qs = StudyLog.objects.filter(user_id=user_id)
+
+        wordbook_id = request.query_params.get("wordbook_id")
+        if wordbook_id:
+            qs = qs.filter(wordbook_id=wordbook_id)
+
+        since_ts = request.query_params.get("since_ts")
+        if since_ts:
+            qs = qs.filter(ts__gte=int(since_ts))
+
+        source = request.query_params.get("source")
+        if source:
+            qs = qs.filter(source=source)
+
+        is_new = request.query_params.get("is_new")
+        if is_new is not None and is_new != "":
+            qs = qs.filter(is_new=bool(int(is_new)))
+
+        qs = qs.order_by("ts")
+        serializer = StudyLogSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class UserSettingsView(APIView):
+    """每用户设置：每日新词上限。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user_id = request.user.id
+        obj, _ = UserSettings.objects.get_or_create(
+            user_id=user_id, defaults={"daily_new_word_goal": 20}
+        )
+        return Response(UserSettingsSerializer(obj).data)
+
+    def post(self, request):
+        user_id = request.user.id
+        goal = request.data.get("daily_new_word_goal")
+        if goal is None:
+            return Response({"error": "daily_new_word_goal 不能为空"}, status=400)
+        try:
+            goal = int(goal)
+        except (TypeError, ValueError):
+            return Response({"error": "daily_new_word_goal 必须为整数"}, status=400)
+        if goal <= 0:
+            return Response({"error": "daily_new_word_goal 必须大于 0"}, status=400)
+
+        obj, _ = UserSettings.objects.update_or_create(
+            user_id=user_id,
+            defaults={"daily_new_word_goal": goal},
+        )
+        return Response(UserSettingsSerializer(obj).data)
 
 
 class WordSearchView(APIView):

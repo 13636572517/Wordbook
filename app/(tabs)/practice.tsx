@@ -120,7 +120,7 @@ export default function PracticeScreen() {
     const now = Date.now();
     await reviewWord(repo, user.id, wordbook.id, wordId, grade, now);
     if (USE_CLOUD) {
-      await postStudyLogs([{ wordbookId: wordbook.id, wordId, grade, ts: now }]);
+      await postStudyLogs([{ wordbookId: wordbook.id, wordId, grade, ts: now, source: 'review' }]);
     } else {
       await repo.addStudyLog({
         userId: user.id,

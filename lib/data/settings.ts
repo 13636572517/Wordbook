@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// 每日新词上限（每用户全局）。本地优先：用 AsyncStorage 按 user 隔离存储，
-// 云端同步（UserSettings 表）留待后续 migrate，先于业务/UI 实现。
+// 每日新词上限（每用户全局）。
+// 本地优先：用 AsyncStorage 按 user 隔离存储；
+// 云端模式：走 httpRepo -> /settings/ 接口（UserSettings 表）。
+const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
+
 export const DAILY_GOAL_DEFAULT = 20;
 const keyFor = (userId: string) => `wb_daily_goal_${userId}`;
 
@@ -16,6 +19,10 @@ export function setStoreForTesting(s: Storage): void {
 }
 
 export async function getDailyNewWordGoal(userId: string): Promise<number> {
+  if (USE_CLOUD) {
+    const { httpRepo } = await import('./httpRepo');
+    return httpRepo.getDailyNewWordGoal(userId);
+  }
   const raw = await store.getItem(keyFor(userId));
   if (raw == null) return DAILY_GOAL_DEFAULT;
   const n = Number(raw);
@@ -23,5 +30,9 @@ export async function getDailyNewWordGoal(userId: string): Promise<number> {
 }
 
 export async function setDailyNewWordGoal(userId: string, n: number): Promise<void> {
+  if (USE_CLOUD) {
+    const { httpRepo } = await import('./httpRepo');
+    return httpRepo.setDailyNewWordGoal(userId, n);
+  }
   await store.setItem(keyFor(userId), String(n));
 }
