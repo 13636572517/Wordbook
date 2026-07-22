@@ -584,3 +584,9 @@ export async function startEnrich(): Promise<{ started: boolean; reason?: string
 export async function stopEnrich(): Promise<{ stopped: boolean; reason?: string }> {
   return api<{ stopped: boolean; reason?: string }>('/enrich/stop/', { method: 'POST' });
 }
+
+/** 获取近义词（例句选择题干扰项用） */
+export async function fetchSimilarWords(word: string): Promise<string[]> {
+  const data = await api<{ word: string; similar: string[] }>(`/words/similar/?word=${encodeURIComponent(word)}`);
+  return data.similar || [];
+}

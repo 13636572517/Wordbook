@@ -1,14 +1,18 @@
-import { postStudyLogs, repo } from '@/lib/data';
+import { fetchSimilarWords, postStudyLogs, repo } from '@/lib/data';
 import { reviewWord } from '@/lib/data/review';
 import {
   genChoice,
   genDictation,
   genPhrase,
+  genPhraseBlank,
+  genSentenceChoice,
   pickRange,
   type ChoiceQuiz,
   type DictationQuiz,
+  type PhraseBlankQuiz,
   type PhraseQuiz,
   type RangeKind,
+  type SentenceChoiceQuiz,
 } from '@/lib/quizgen';
 import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
@@ -27,8 +31,8 @@ import {
 // 云端模式开关（与 lib/data/index.ts 保持一致）
 const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 
-type QuizType = 'dictation' | 'choice' | 'phrase';
-type Quiz = DictationQuiz | ChoiceQuiz | PhraseQuiz;
+type QuizType = 'dictation' | 'choice' | 'phrase' | 'phrase-blank' | 'sentence-choice';
+type Quiz = DictationQuiz | ChoiceQuiz | PhraseQuiz | PhraseBlankQuiz | SentenceChoiceQuiz;
 
 interface ResultRow {
   word: string;
@@ -82,6 +86,22 @@ export default function QuizRunner({
         now,
       });
       const pool: Quiz[] = [];
+
+      // 例句选择题需要异步获取近义词（最多 10 个词）
+      let similarMap: Map<string, string[]> = new Map();
+      if (types.includes('sentence-choice')) {
+        const candidates = words.slice(0, 10);
+        const results = await Promise.allSettled(
+          candidates.map((w) => fetchSimilarWords(w.word)),
+        );
+        candidates.forEach((w, i) => {
+          const r = results[i];
+          if (r.status === 'fulfilled' && r.value.length >= 3) {
+            similarMap.set(w.id, r.value);
+          }
+        });
+      }
+
       for (const w of words) {
         for (const t of types) {
           if (t === 'dictation') {
@@ -91,6 +111,15 @@ export default function QuizRunner({
           } else if (t === 'phrase') {
             const q = genPhrase(w);
             if (q) pool.push(q);
+          } else if (t === 'phrase-blank') {
+            const q = genPhraseBlank(w);
+            if (q) pool.push(q);
+          } else if (t === 'sentence-choice') {
+            const similar = similarMap.get(w.id);
+            if (similar) {
+              const q = genSentenceChoice(w, similar);
+              if (q) pool.push(q);
+            }
           }
         }
       }
@@ -293,9 +322,68 @@ function QuestionCard({
           </Text>
         </>
       )}
+      {quiz.type === 'phrase-blank' && (
+        <>
+          <Text style={[styles.qPrompt, { color: colors.subtitle }]}>
+            根据词组释义，填写缺失的单词
+          </Text>
+          <Text style={[styles.qHeadline, { color: colors.text }]}>
+            {quiz.blanked}
+          </Text>
+          <Text style={[styles.hintText, { color: colors.pinyin }]}>
+            {quiz.meaning}（{quiz.hintLength}个字母）
+          </Text>
+        </>
+      )}
+      {quiz.type === 'sentence-choice' && (
+        <>
+          <Text style={[styles.qPrompt, { color: colors.subtitle }]}>
+            选择正确的单词填入例句
+          </Text>
+          <Text style={[styles.qHeadline, { color: colors.text, fontSize: 20 }]}>
+            {quiz.sentence}
+          </Text>
+          {quiz.sentenceZh ? (
+            <Text style={[styles.hintText, { color: colors.pinyin, fontSize: 14 }]}>
+              {quiz.sentenceZh}
+            </Text>
+          ) : null}
+          <View style={styles.optionsWrap}>
+            {quiz.options.map((opt, i) => {
+              const chosen = graded && input === opt;
+              const isAnswer = opt === quiz.answer;
+              const bg = graded
+                ? isAnswer
+                  ? '#30A46C'
+                  : chosen
+                    ? '#E5484D'
+                    : colors.card
+                : colors.card;
+              return (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.optionBtn, { backgroundColor: bg }]}
+                  onPress={() => grade(opt)}
+                  disabled={graded}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      { color: graded && (isAnswer || chosen) ? '#FFF' : colors.text },
+                    ]}
+                  >
+                    {opt}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      )}
 
-      {/* 输入区（dictation / phrase） */}
-      {quiz.type !== 'choice' && (
+      {/* 输入区（dictation / phrase / phrase-blank） */}
+      {quiz.type !== 'choice' && quiz.type !== 'sentence-choice' && (
         <View style={styles.inputWrap}>
           <TextInput
             style={[
