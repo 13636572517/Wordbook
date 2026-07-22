@@ -1,291 +1,142 @@
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  FlatList,
-  Alert,
-  ActivityIndicator,
-  Modal,
-  TouchableOpacity,
-  Platform,
-  Animated,
-  PanResponder,
-  Keyboard,
-} from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StorageAccessFramework } from 'expo-file-system/legacy';
-import * as LegacyFS from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
+import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
-import useLanguage from '@/components/useLanguage';
-import WordForm from '@/components/WordForm';
-import WordCard from '@/components/WordCard';
+import type { Wordbook } from '@/lib/data';
+import { repo } from '@/lib/data';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
-  getAllWords,
-  searchWords,
-  deleteWord,
-  updateWord,
-  Word,
-} from '@/lib/database';
-import { generatePronunciation } from '@/lib/pronunciation';
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const THUMB_MIN_HEIGHT = 40;
-const HIDE_DELAY = 1500;
+const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 
 export default function LibraryScreen() {
-  const [words, setWords] = useState<Word[]>([]);
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(true);
   const colors = useColors();
-  const { language, refresh: refreshLanguage } = useLanguage();
   const insets = useSafeAreaInsets();
+  const {
+    wordbook,
+    wordbooks,
+    isAdmin,
+    setActiveWordbook,
+    createWordbook,
+    refreshBooks,
+  } = useSession();
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
 
-  const [editingWord, setEditingWord] = useState<Word | null>(null);
-  const [editWord, setEditWord] = useState('');
-  const [editTranslation, setEditTranslation] = useState('');
-  const [editPronunciation, setEditPronunciation] = useState('');
-
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, (e) => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      setKeyboardHeight(0);
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  const flatListRef = useRef<FlatList<Word>>(null);
-  const contentHeightRef = useRef(0);
-  const layoutHeightRef = useRef(0);
-  const scrollOffsetRef = useRef(0);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const isDraggingRef = useRef(false);
-
-  const thumbY = useRef(new Animated.Value(0)).current;
-  const thumbOpacity = useRef(new Animated.Value(0)).current;
-  const [thumbHeight, setThumbHeight] = useState(THUMB_MIN_HEIGHT);
-
-  const calcThumbHeight = useCallback(() => {
-    const layout = layoutHeightRef.current;
-    const content = contentHeightRef.current;
-    if (content <= layout || layout === 0) return 0;
-    return Math.max(THUMB_MIN_HEIGHT, layout * (layout / content));
-  }, []);
-
-  const showThumb = useCallback(() => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    Animated.timing(thumbOpacity, {
-      toValue: 1,
-      duration: 150,
-      useNativeDriver: true,
-    }).start();
-  }, [thumbOpacity]);
-
-  const scheduleHideThumb = useCallback(() => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => {
-      Animated.timing(thumbOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }, HIDE_DELAY);
-  }, [thumbOpacity]);
-
-  const updateThumbPosition = useCallback((offset: number) => {
-    const content = contentHeightRef.current;
-    const layout = layoutHeightRef.current;
-    if (content <= layout) return;
-    const maxScroll = content - layout;
-    const h = calcThumbHeight();
-    const maxY = layout - h;
-    if (maxY <= 0) return;
-    const ratio = Math.min(1, Math.max(0, offset / maxScroll));
-    thumbY.setValue(ratio * maxY);
-  }, [thumbY, calcThumbHeight]);
-
-  const panResponder = useMemo(() => {
-    let startThumbY = 0;
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        isDraggingRef.current = true;
-        showThumb();
-        const h = calcThumbHeight();
-        const maxY = layoutHeightRef.current - h;
-        const maxScroll = contentHeightRef.current - layoutHeightRef.current;
-        startThumbY = maxScroll > 0 && maxY > 0
-          ? (scrollOffsetRef.current / maxScroll) * maxY
-          : 0;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        const h = calcThumbHeight();
-        const maxY = layoutHeightRef.current - h;
-        if (maxY <= 0) return;
-        const newThumbY = Math.min(maxY, Math.max(0, startThumbY + gestureState.dy));
-        const ratio = newThumbY / maxY;
-        const maxScroll = contentHeightRef.current - layoutHeightRef.current;
-        flatListRef.current?.scrollToOffset({ offset: ratio * maxScroll, animated: false });
-      },
-      onPanResponderRelease: () => {
-        isDraggingRef.current = false;
-        scheduleHideThumb();
-      },
-      onPanResponderTerminate: () => {
-        isDraggingRef.current = false;
-        scheduleHideThumb();
-      },
-    });
-  }, [showThumb, scheduleHideThumb, calcThumbHeight]);
-
-  const handleScroll = useCallback((e: any) => {
-    const offset = e.nativeEvent.contentOffset.y;
-    scrollOffsetRef.current = offset;
-    updateThumbPosition(offset);
-    if (!isDraggingRef.current) {
-      showThumb();
-      scheduleHideThumb();
+  const load = useCallback(async () => {
+    const c: Record<string, number> = {};
+    if (USE_CLOUD) {
+      // 云端模式：直接用服务器返回的 word_count，避免逐词本拉全量单词
+      for (const wb of wordbooks) {
+        c[wb.id] = wb.wordCount ?? 0;
+      }
+    } else {
+      for (const wb of wordbooks) {
+        const words = await repo.getWordsByWordbook(wb.id);
+        c[wb.id] = words.length;
+      }
     }
-  }, [updateThumbPosition, showThumb, scheduleHideThumb]);
-
-  const handleContentSizeChange = useCallback((_w: number, h: number) => {
-    contentHeightRef.current = h;
-    setThumbHeight(calcThumbHeight());
-    updateThumbPosition(scrollOffsetRef.current);
-  }, [calcThumbHeight, updateThumbPosition]);
-
-  const handleListLayout = useCallback((e: any) => {
-    layoutHeightRef.current = e.nativeEvent.layout.height;
-    setThumbHeight(calcThumbHeight());
-    updateThumbPosition(scrollOffsetRef.current);
-  }, [calcThumbHeight, updateThumbPosition]);
-
-  const loadWords = useCallback(async () => {
-    setLoading(true);
-    const langCode = await refreshLanguage();
-    const results = query.trim()
-      ? await searchWords(langCode, query.trim())
-      : await getAllWords(langCode);
-    setWords(results);
+    setCounts(c);
     setLoading(false);
-  }, [query, refreshLanguage]);
+  }, [wordbooks]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadWords();
-    }, [loadWords])
-  );
+  useFocusEffect(useCallback(() => {
+    load();
+  }, [load]));
 
-  const handleDelete = (id: number) => {
-    Alert.alert('Delete Word', 'Remove this word from your library?', [
-      { text: 'Cancel', style: 'cancel' },
+  const pick = (wb: Wordbook) => {
+    router.push({ pathname: '/wordbook-detail', params: { id: wb.id, name: wb.name } });
+  };
+
+  const setAsActive = (wb: Wordbook) => {
+    setActiveWordbook(wb.id);
+    Alert.alert('已切换', `正在学习「${wb.name}」，去学习标签开始吧`);
+  };
+
+  const remove = (wb: Wordbook) => {
+    if (wb.type !== 'custom') return;
+    Alert.alert('删除词本', `确定删除「${wb.name}」？学习进度也会一并删除。`, [
+      { text: '取消', style: 'cancel' },
       {
-        text: 'Delete',
+        text: '删除',
         style: 'destructive',
         onPress: async () => {
-          if (language) {
-            await deleteWord(language.code, id);
-            loadWords();
-          }
+          await repo.deleteWordbook(wb.id);
+          await refreshBooks();
+          load();
         },
       },
     ]);
   };
 
-  const handleEdit = (word: Word) => {
-    setEditingWord(word);
-    setEditWord(word.word);
-    setEditTranslation(word.translation);
-    setEditPronunciation(word.pronunciation);
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    await createWordbook(name);
+    setNewName('');
+    setShowCreate(false);
   };
 
-  const handleSaveEdit = async () => {
-    if (!editingWord || !language) return;
-    const trimWord = editWord.trim();
-    const trimTranslation = editTranslation.trim();
-    if (!trimWord || !trimTranslation) {
-      Alert.alert('Missing fields', `Please fill in both ${language.nativeName} and translation.`);
-      return;
-    }
-    const finalPronunciation = language.hasPronunciationGuide
-      ? editPronunciation || generatePronunciation(trimWord, language.code)
-      : '';
-    await updateWord(language.code, editingWord.id, trimWord, trimTranslation, finalPronunciation);
-    setEditingWord(null);
-    loadWords();
-  };
+  const systemBooks = wordbooks.filter((w) => w.type === 'system');
+  const customBooks = wordbooks.filter((w) => w.type === 'custom');
 
-  const handleExport = async () => {
-    if (!language) return;
-    const allWords = await getAllWords(language.code);
-    if (allWords.length === 0) {
-      Alert.alert('Nothing to export', 'Your library is empty. Add some words first!');
-      return;
-    }
-    const date = new Date().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-    const lines = allWords.map((w) => {
-      if (language.hasPronunciationGuide && w.pronunciation) {
-        return `${w.word} — ${w.translation} (${w.pronunciation})`;
-      }
-      return `${w.word} — ${w.translation}`;
-    });
-    const content = [
-      `${language.name} Vocabulary`,
-      `Exported: ${date}`,
-      `Total: ${allWords.length} word${allWords.length === 1 ? '' : 's'}`,
-      '---',
-      ...lines,
-    ].join('\n');
-
-    const filename = `${language.name.replace(/[^a-zA-Z0-9]/g, '_')}_Vocabulary.txt`;
-
-    if (Platform.OS === 'web') {
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } else if (Platform.OS === 'android') {
-      const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (!permissions.granted) return;
-      const fileUri = await StorageAccessFramework.createFileAsync(
-        permissions.directoryUri,
-        filename.replace('.txt', ''),
-        'text/plain'
-      );
-      await LegacyFS.writeAsStringAsync(fileUri, content);
-      Alert.alert('Exported', `${filename} saved to your selected folder.`);
-    } else {
-      const tmpPath = LegacyFS.cacheDirectory + filename;
-      await LegacyFS.writeAsStringAsync(tmpPath, content);
-      await Sharing.shareAsync(tmpPath, {
-        mimeType: 'text/plain',
-        dialogTitle: `Export ${language.name} Vocabulary`,
-      });
-    }
-  };
-
-  const canSaveEdit =
-    editWord.trim().length > 0 && editTranslation.trim().length > 0;
+  const renderBook = (wb: Wordbook) => (
+    <TouchableOpacity
+      key={wb.id}
+      style={[
+        styles.card,
+        {
+          backgroundColor: colors.card,
+          borderColor: wb.id === wordbook?.id ? colors.tint : colors.border,
+          borderWidth: wb.id === wordbook?.id ? 2 : 1,
+        },
+      ]}
+      onPress={() => pick(wb)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.cardMain}>
+        <Text style={[styles.cardName, { color: colors.text }]}>{wb.name}</Text>
+        <Text style={[styles.cardCount, { color: colors.subtitle }]}>
+          {counts[wb.id] ?? 0} 词
+          {wb.id === wordbook?.id ? '  ·  当前学习' : ''}
+        </Text>
+      </View>
+      <View style={styles.cardActions}>
+        {wb.id !== wordbook?.id && (
+          <TouchableOpacity
+            style={styles.setActiveBtn}
+            onPress={() => setAsActive(wb)}
+            activeOpacity={0.6}
+          >
+            <FontAwesome name="check-circle-o" size={18} color={colors.tint} />
+          </TouchableOpacity>
+        )}
+        {wb.type === 'custom' && (
+          <TouchableOpacity
+            style={styles.delBtn}
+            onPress={() => remove(wb)}
+            activeOpacity={0.6}
+          >
+            <FontAwesome name="trash" size={16} color="#E5484D" />
+          </TouchableOpacity>
+        )}
+        <FontAwesome name="chevron-right" size={13} color={colors.subtitle} />
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <View
@@ -294,175 +145,79 @@ export default function LibraryScreen() {
         { backgroundColor: colors.background, paddingTop: insets.top },
       ]}
     >
-      <View style={styles.titleRow}>
-        <View style={styles.titleLeft}>
-          <Text style={[styles.screenTitle, { color: colors.text }]}>Library</Text>
-          {language && (
-            <Text style={[styles.langSubtitle, { color: colors.pinyin }]}>
-              {language.flag} {language.nativeName}
-            </Text>
-          )}
-        </View>
-        <TouchableOpacity
-          onPress={handleExport}
-          style={styles.exportButton}
-          activeOpacity={0.6}
-        >
-          <FontAwesome name="share-square-o" size={22} color={colors.tint} />
-        </TouchableOpacity>
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: colors.text }]}>词本</Text>
       </View>
 
-      <View
-        style={[
-          styles.searchBar,
-          {
-            backgroundColor: colors.inputBackground,
-            borderColor: colors.border,
-          },
-        ]}
-      >
-        <FontAwesome name="search" size={14} color={colors.tint} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.text }]}
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search words..."
-          placeholderTextColor={colors.pinyin}
-          autoCorrect={false}
-        />
-        {query.length > 0 && (
-          <FontAwesome
-            name="times-circle"
-            size={16}
-            color={colors.subtitle}
-            onPress={() => setQuery('')}
-          />
-        )}
-      </View>
-
-      {loading || !language ? (
-        <ActivityIndicator
-          style={styles.loader}
-          size="large"
-          color={colors.tint}
-        />
-      ) : words.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>
-            {query.trim() ? '?' : language.flag}
-          </Text>
-          <Text style={[styles.emptyText, { color: colors.subtitle }]}>
-            {query.trim() ? 'No matching words' : 'Your library is empty'}
-          </Text>
-        </View>
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={colors.tint} />
       ) : (
-        <View style={styles.listContainer}>
-          <FlatList
-            ref={flatListRef}
-            data={words}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={({ item }) => (
-              <WordCard
-                word={item}
-                language={language}
-                onDelete={handleDelete}
-                onEdit={handleEdit}
-                showDelete
-              />
-            )}
-            contentContainerStyle={styles.list}
-            showsVerticalScrollIndicator={false}
-            onScroll={handleScroll}
-            onContentSizeChange={handleContentSizeChange}
-            onLayout={handleListLayout}
-            scrollEventThrottle={16}
-          />
-          {thumbHeight > 0 && (
-            <Animated.View
-              style={[styles.scrollTrack, { opacity: thumbOpacity }]}
-              pointerEvents="box-none"
-            >
-              <Animated.View
+        <ScrollView contentContainerStyle={styles.list}>
+          <Text style={[styles.groupLabel, { color: colors.subtitle }]}>
+            系统词本
+          </Text>
+          {systemBooks.map(renderBook)}
+          <Text style={[styles.groupLabel, { color: colors.subtitle }]}>
+            我的词本
+          </Text>
+          {customBooks.length === 0 ? (
+            <Text style={[styles.emptyHint, { color: colors.subtitle }]}>
+              还没有自定义词本，点击下方按钮新建一个吧
+            </Text>
+          ) : (
+            customBooks.map(renderBook)
+          )}
+
+          {/* Create new wordbook (cloud mode: admin only) */}
+          {(!USE_CLOUD || isAdmin) && (showCreate ? (
+            <View style={[styles.createCard, { backgroundColor: colors.card, borderColor: colors.tint }]}>
+              <TextInput
                 style={[
-                  styles.scrollThumbHitArea,
+                  styles.createInput,
                   {
-                    height: thumbHeight,
-                    transform: [{ translateY: thumbY }],
+                    backgroundColor: colors.inputBackground,
+                    borderColor: colors.border,
+                    color: colors.text,
                   },
                 ]}
-                {...panResponder.panHandlers}
-              >
-                <View
-                  style={[
-                    styles.scrollThumbVisible,
-                    { backgroundColor: colors.subtitle },
-                  ]}
-                />
-              </Animated.View>
-            </Animated.View>
-          )}
-        </View>
-      )}
-
-      <Modal
-        visible={editingWord !== null}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setEditingWord(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalContent,
-              {
-                backgroundColor: colors.background,
-                paddingBottom: keyboardHeight > 0 ? keyboardHeight : 40,
-              },
-            ]}
-          >
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                Edit Word
-              </Text>
-              <TouchableOpacity
-                onPress={() => setEditingWord(null)}
-                style={styles.modalClose}
-                activeOpacity={0.6}
-              >
-                <FontAwesome name="times" size={22} color={colors.subtitle} />
-              </TouchableOpacity>
-            </View>
-
-            {language && (
-              <WordForm
-                language={language}
-                wordText={editWord}
-                onWordTextChange={setEditWord}
-                translation={editTranslation}
-                onTranslationChange={setEditTranslation}
-                pronunciation={editPronunciation}
-                onPronunciationChange={setEditPronunciation}
+                value={newName}
+                onChangeText={setNewName}
+                placeholder="输入词本名称…"
+                placeholderTextColor={colors.pinyin}
+                autoFocus
               />
-            )}
-
+              <View style={styles.createActions}>
+                <TouchableOpacity
+                  style={[styles.createConfirm, { backgroundColor: colors.tint, opacity: newName.trim() ? 1 : 0.4 }]}
+                  disabled={!newName.trim()}
+                  onPress={handleCreate}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.createConfirmText}>创建</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.createCancel}
+                  onPress={() => { setShowCreate(false); setNewName(''); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.createCancelText, { color: colors.subtitle }]}>取消</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
             <TouchableOpacity
-              style={[
-                styles.saveButton,
-                {
-                  backgroundColor: colors.tint,
-                  opacity: canSaveEdit ? 1 : 0.35,
-                },
-              ]}
-              onPress={handleSaveEdit}
-              disabled={!canSaveEdit}
+              style={[styles.addBookCard, { borderColor: colors.border }]}
+              onPress={() => setShowCreate(true)}
               activeOpacity={0.7}
             >
-              <FontAwesome name="check" size={16} color="#0D0D0D" />
-              <Text style={styles.saveText}>Save Changes</Text>
+              <FontAwesome name="plus" size={20} color={colors.tint} />
+              <Text style={[styles.addBookText, { color: colors.tint }]}>
+                新建自定义词本
+              </Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -471,7 +226,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  titleRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -479,121 +234,109 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 12,
   },
-  titleLeft: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 10,
-    flexShrink: 1,
-  },
-  exportButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  screenTitle: {
+  title: {
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: -0.5,
   },
-  langSubtitle: {
-    fontSize: 14,
-    letterSpacing: 0.3,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
   list: {
+    paddingHorizontal: 20,
     paddingBottom: 20,
   },
-  listContainer: {
-    flex: 1,
+  groupLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 16,
+    marginBottom: 8,
   },
-  scrollTrack: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: 0,
-    width: 24,
-    alignItems: 'flex-end',
+  emptyHint: {
+    fontSize: 14,
+    marginBottom: 8,
   },
-  scrollThumbHitArea: {
-    width: 24,
-    alignItems: 'flex-end',
-    paddingRight: 2,
-  },
-  scrollThumbVisible: {
-    width: 4,
-    flex: 1,
-    borderRadius: 2,
-    opacity: 0.4,
-  },
-  loader: {
-    marginTop: 40,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingBottom: 60,
-  },
-  emptyIcon: {
-    fontSize: 48,
-  },
-  emptyText: {
-    fontSize: 15,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-  },
-  modalHeader: {
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 20,
-    paddingBottom: 8,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 10,
   },
-  modalTitle: {
-    fontSize: 22,
+  cardMain: {
+    flexDirection: 'column',
+  },
+  cardName: {
+    fontSize: 20,
     fontWeight: '700',
   },
-  modalClose: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
+  cardCount: {
+    fontSize: 13,
+    marginTop: 2,
   },
-  saveButton: {
+  delBtn: {
+    padding: 8,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  setActiveBtn: {
+    padding: 6,
+  },
+  addBookCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    marginTop: 28,
-    paddingVertical: 16,
-    borderRadius: 14,
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    paddingVertical: 18,
+    marginTop: 16,
   },
-  saveText: {
+  addBookText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  createCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 16,
+    marginTop: 16,
+  },
+  createInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    marginBottom: 12,
+  },
+  createActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  createConfirm: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  createConfirmText: {
     color: '#0D0D0D',
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '700',
+  },
+  createCancel: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  createCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

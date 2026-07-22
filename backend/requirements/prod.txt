@@ -1,0 +1,5 @@
+-r base.txt
+gunicorn>=22.0
+gevent>=24.0
+mysqlclient>=2.2
+django-redis>=5.4

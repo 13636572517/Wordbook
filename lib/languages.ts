@@ -206,7 +206,7 @@ export const LANGUAGES: LanguageConfig[] = [
   },
 ];
 
-export const DEFAULT_LANGUAGE_CODE = 'zh-CN';
+export const DEFAULT_LANGUAGE_CODE = 'en';
 
 export function getLanguageByCode(code: string): LanguageConfig {
   return LANGUAGES.find((l) => l.code === code) ?? LANGUAGES[0];

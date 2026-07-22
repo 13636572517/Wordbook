@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "WordHoard",
+    "name": "御算词擎",
     "slug": "wordhoard",
     "version": "1.0.1",
     "orientation": "portrait",
@@ -28,7 +28,11 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "themeColor": "#0D0D0D",
+      "backgroundColor": "#0D0D0D",
+      "display": "standalone",
+      "orientation": "portrait"
     },
     "plugins": [
       "expo-router"

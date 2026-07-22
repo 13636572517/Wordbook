@@ -39,3 +39,12 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# server credentials (NEVER push)
+server-info.md
+
+# downloaded word data (large, regenerable, root only)
+/data/
+
+# dict cache progress (intermediate file)
+lib/data/dictCache.json
