@@ -183,3 +183,22 @@ cd /opt/learning/backend && venv/bin/python manage.py migrate --settings=config.
 5. `backend/apps/vocab/enrich_service.py`（补全 + 防投毒）、`backend/apps/vocab/views.py`、`models.py`、`urls.py`
 6. `backend/config/settings/prod.py`（部署配置）
 7. 数据修复工具链：`scripts/verify_enrichment_local.py`、`scripts/fix_failed_via_html.py`、`backend/apps/vocab/management/commands/apply_fixes.py`
+
+## 11. 功能更新（2026-07-22）：今日报告 / 每日新词上限 / 测试模块 / 复习
+
+分支 `feature/daily-report-quiz`（基于 main @ 63e0e1d，14 commit）。由 superpowers subagent 驱动 TDD 完成 T1–T12，全部 tsx 测试绿、tsc 0、expo export 17 路由成功。
+
+新增能力：
+- **修 StudyLog 断点**：`app/(tabs)/index.tsx` 的 `handleGrade` 评分后调 `postStudyLogs`（本地经 `repo.addStudyLog`，云端经 `httpRepo.postStudyLogs`）。studylog 本地结构含 `source`/`isNew`。
+- **今日报告**（统计页）：`getTodayStats` → 今日学习数 / 今日掌握率 / 今日词明细（评级+时间）。
+- **每日新词上限**：每用户全局（默认 20），`getDailyNewWordGoal`/`setDailyNewWordGoal`（AsyncStorage `wb_daily_goal_{userId}`）；`getNextQuizWord` 加 `allowNew` 闸门，达上限只推到期复习；`index.tsx` 的 `loadNext` 已接（取 goal + 今日计数传入）。
+- **练习 Tab**（新增，测试+复习合并入口）：
+  - 每日测试：范围（全部/薄弱词/最近7天/自选-TODO）/ 题型（默写/选择/词组多选）；`QuizRunner` 对=Good(2)/错=Again(0) + `addStudyLog source:'quiz'`。
+  - 复习：最近 N 天（7/14/30）翻卡四档评分 + `addStudyLog source:'review'`。
+- 数据层：`lib/data/quiz.ts`(闸门+getTodayNewWordCount)、`stats.ts`(getTodayStats)、`settings.ts`、`review-scope.ts`(getRecentWords)、`quizgen.ts`(题目生成)、`repo.ts`(+addStudyLog/listStudyLogs)、`memoryRepo`/`asyncStorageRepo` 实现、`lib/__tests__/quizgen.test.ts` 等。
+
+设计/计划：`docs/plans/2026-07-22-daily-report-quiz-design.md` + `2026-07-22-daily-report-quiz.md`。
+
+待服务器写操作（**需单独确认，未做**）：`study_logs` 加 `source`/`is_new` 精确统计、`user_settings` 表云端同步每日上限、部署 `learning.yusuan.xyz`。当前本地优先用 AsyncStorage，未 migrate。
+
+状态：未合 main、未部署。
