@@ -198,7 +198,7 @@ cd /opt/learning/backend && DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/b
 
 ## 11. 功能更新（2026-07-22）：今日报告 / 每日新词上限 / 测试模块 / 复习
 
-分支 `feature/daily-report-quiz`（基于 main @ 63e0e1d，14 commit）。由 superpowers subagent 驱动 TDD 完成 T1–T12，全部 tsx 测试绿、tsc 0、expo export 17 路由成功。
+分支 `feature/daily-report-quiz`（基于 main @ 63e0e1d，14 commit，**已于 `c4a1fc7` 合并入 main**）。由 superpowers subagent 驱动 TDD 完成 T1–T12，全部 tsx 测试绿、tsc 0、expo export 17 路由成功。
 
 新增能力：
 - **修 StudyLog 断点**：`app/(tabs)/index.tsx` 的 `handleGrade` 评分后调 `postStudyLogs`（本地经 `repo.addStudyLog`，云端经 `httpRepo.postStudyLogs`）。studylog 本地结构含 `source`/`isNew`。
@@ -211,9 +211,9 @@ cd /opt/learning/backend && DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/b
 
 设计/计划：`docs/plans/2026-07-22-daily-report-quiz-design.md` + `2026-07-22-daily-report-quiz.md`。
 
-待服务器写操作（**需单独确认，未做**）：`study_logs` 加 `source`/`is_new` 精确统计、`user_settings` 表云端同步每日上限、部署 `learning.yusuan.xyz`。当前本地优先用 AsyncStorage，未 migrate。
+服务器写操作（**已完成**）：`d5ad027` 云端同步新增 `settings/`、`study-logs/list/` 端点；migration **0003**（`user_settings` 表 + `study_logs.source`/`is_new` 字段）**已在生产库执行**（2026-07-22 只读核查确认：`user_settings` 表与 `source`/`is_new` 字段均存在、`django_migrations` 含 `vocab 0003`）。
 
-状态：未合 main、未部署。
+状态：**已合并 main（`c4a1fc7`）+ 云端同步（`d5ad027`）+ 已部署 `learning.yusuan.xyz`**。本地 `feature/daily-report-quiz` 分支已完全并入 main（可删除，未单独推送 GitHub）。
 
 ## 12. 功能更新（2026-07-22 晚间）：自定义词本逐词删除 / 释义错乱修复 / PWA 图标
 
