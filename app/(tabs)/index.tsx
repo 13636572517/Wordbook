@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   TouchableOpacity,
@@ -22,6 +22,7 @@ import { getPriorityIds, clearPriorityIds } from '@/lib/quizSelection';
 import { getLanguageByCode } from '@/lib/languages';
 import { useSession } from '@/components/SessionProvider';
 import FlashCard from '@/components/FlashCard';
+import { speakWord } from '@/lib/speech';
 
 const ENGLISH = getLanguageByCode('en');
 const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
@@ -73,6 +74,8 @@ export default function HomeScreen() {
       setIsFlipped(false);
       setCardKey((k) => k + 1);
       setLoading(false);
+      // 新词自动播放发音
+      if (w) speakWord(w.word, ENGLISH);
       // 云端模式：slim 词表不含释义大字段，选中单词后异步拉取
       // 完整数据（释义/词组/例句）合并到卡片，不阻塞显示
       if (USE_CLOUD && w) {
