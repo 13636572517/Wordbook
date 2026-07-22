@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-07-22（Phase B 云端部署已完成 + 数据修复工程已完成）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-07-22 晚间（Phase B 云端部署 + 数据修复 + 自定义词本删除 + PWA 图标修复 均已完成上线）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -12,7 +12,7 @@
 ## 1. 项目位置与状态
 
 - **项目路径**：`/Users/michael/Workbuddy/高中学习工具/wordhoard`
-- **当前分支**：`feature/wordbook-account`（工作区干净）。⚠️ 本分支的大量改动**尚未合并到 `main`**，下次发布前需先 merge。
+- **当前分支**：`main`（工作区干净，HEAD 与 `origin/main` 一致）。近期修复（逐词删除、释义修复、PWA 图标）均**直接合入 `main` 并部署**（经用户确认），不再走 feature 分支。历史 `feature/wordbook-account` 的架构改动已随这些修复并入。
 - **远程**：`origin` = `git@github.com:13636572517/Wordbook.git`；另有 `upstream`（指向模板仓库）。
 - **线上地址**：`https://learning.yusuan.xyz`（PWA，桌面/手机浏览器可加桌面，桌面快捷名「御算词擎」）。
 - **技术栈**：
@@ -23,14 +23,18 @@
 - **类型检查**：`./node_modules/.bin/tsc --noEmit`。
 - **测试**：`node_modules/.bin/tsx lib/data/__tests__/repo.test.ts`（tsx 跑纯逻辑测试）。
 
-### 最近提交（feature/wordbook-account，新→旧）
+### 最近提交（main，新→旧）
 ```
-4eda885 fix: 修复脚本增强(HTML损坏检测+本地校验降速续跑合并)
-7fc340c fix: 释义错位修复工具链(本地校验+HTML补救+应用命令)
+2361344 fix: 补齐 PWA 图标与 manifest，修复 iOS 添加到主屏幕无图标
+4d1c88e feat: 自定义词本管理员可逐词删除单词
+b505286 fix: 词本列表「单词数」添加单词后不刷新
+1ab6c71 fix: 模态弹窗左上角叉无法关闭（web/HarmonyOS 上 router.back() 为 no-op）
+0b7485b feat: 练习 Tab 前移 + 题库仅测已学词 + 修复自建词本自动匹配释义
+aed3ec7 feat: 同源词典代理 + 练习题库仅已学词 + Tab 排序
+0131097 feat: 同源 TTS 代理（HarmonyOS 发音静音修复）
 8a7d43b feat: PWA 品牌化(御算词擎) + 云端性能优化 + 数据完整性修复
 7e02f47 feat: Phase B backend (Django API + JWT SSO) + httpRepo + migration
 6ed543e feat: 中文化UI + 离线词典缓存 + 用户系统UI + 发音修复
-df9ae7b feat(ui): wire DAL+session into tabs (LA7-LA9) ...
 ```
 
 ## 2. 架构总览
@@ -98,8 +102,10 @@ df9ae7b feat(ui): wire DAL+session into tabs (LA7-LA9) ...
 - 管理员「一键补全释义」：`enrich_service.py`（gevent 兼容后台线程 + Redis 进度 + 断点续传 + 进程管理 + 限流 0.5s/词），前端 `EnrichModal` 弹窗（仅桌面网页显示）。
 
 ### 5.3 PWA 品牌化（御算词擎）
-- 应用名「御算词擎」（`app.json`），图标「墨金印章」方案（`assets/images/`）。
-- `scripts/pwa-postbuild.mjs`：构建后自动注入 `manifest.json` / `sw.js` 到 `index.html`。
+- 应用名「御算词擎」（`app.json`），图标「墨金印章」方案（`assets/images/`，`icon.png` 1024 带透明）。
+- PWA 标签在 `app/+html.tsx`：`theme-color` / `mobile-web-app-capable` / `manifest` / `apple-touch-icon`（180 + 1024）/ `apple-mobile-web-app-title` / `application-name` / `description`。
+- PWA 资源放 `public/`（`manifest.json` + `icons/*.png`），Expo `web.output:"static"` 构建时自动拷贝到 `dist/` 根。**iOS 只用 `apple-touch-icon`，不读 manifest 图标**，故 `public/icons/icon-1024.png` 必须存在，否则主屏无图标（见 §12.3）。
+- 改图标流程：更新 `assets/images/icon.png` → 用 Pillow 重生成 `public/icons/*`（压主题深底 `#0D0D0D` 消透明）→ 重新 `expo export`。
 
 ### 5.4 性能与稳定性修复
 - 首页加载慢（N+1 请求 + 大响应体）→ `slim` 参数 + 进度缓存 + in-flight 去重。
@@ -118,29 +124,35 @@ df9ae7b feat(ui): wire DAL+session into tabs (LA7-LA9) ...
 
 ### 前端（Expo Web → 静态文件 → Nginx）
 ```bash
-# 1. 云端模式构建（输出到 dist/，含 PWA 后处理）
-npm run build:web:cloud
-# 2. 上传到服务器（密码向用户索取，<PW> 占位）
-sshpass -p '<PW>' rsync -az --delete dist/ admin@47.103.133.232:/opt/learning/frontend/dist/
+# 1. 云端模式构建（输出到 dist/，PWA 资源由 public/ 自动拷贝，无需额外后处理）
+CI=true EXPO_PUBLIC_USE_CLOUD=true npx expo export --platform web
+# 2. 上传到服务器（凭证在 gitignored 的 server-credentials.json，绝不进提交）
+PYTHONPATH=/abs/path/to/wordhoard python3 scripts/deploy_frontend.py
+#    → 备份旧 dist 为 dist.bak.bak，B2 SFTP 上传 dist/ 到 /opt/learning/frontend/dist
+#    → 纯静态，无需 reload nginx
 ```
+- PWA 图标/manifest 来自 `public/`（Expo `output:"static"` 自动拷贝）。改图标：更新 `assets/images/icon.png` → 用 Pillow 重新生成 `public/icons/*` → 重新构建。
 
 ### 后端（Django + Gunicorn + systemd）
 ```bash
-# 服务器端：代码在 /opt/learning/backend，虚拟环境 venv/，设置 config.settings.prod
-# 同步单个文件示例：
-sshpass -p '<PW>' rsync -az backend/apps/vocab/enrich_service.py admin@47.103.133.232:/opt/learning/backend/apps/vocab/
-# 重启服务（sudo 密码同 <PW>）：
-sshpass -p '<PW>' ssh admin@47.103.133.232 "echo '<PW>' | sudo -S systemctl restart learning.service && systemctl is-active learning.service"
+# 无 model 变更的部署（git merge origin/main + sudo restart，跳过 migrate 规避 SQLite 陷阱）：
+PYTHONPATH=/abs/path/to/wordhoard python3 scripts/deploy_backend_nomigrate.py
+# 有 model 变更时，服务器端再执行迁移：
+cd /opt/learning/backend && DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/bin/python manage.py migrate
+# 重启服务（sudo 密码同服务器密码）：
+echo '<PW>' | sudo -S systemctl restart learning.service && systemctl is-active learning.service
 ```
+- ⚠️ **致命坑**：`manage.py` 默认连 **SQLite**（`dev.py`），运行的 gunicorn 才用 `config.settings.prod` + `.env` → MySQL。服务器上任何 `manage.py` 探查/迁移**必须加 `DJANGO_SETTINGS_MODULE=config.settings.prod`**，否则悄悄操作 SQLite，线上无变化。
 - 后端运行需 `DJANGO_SETTINGS_MODULE=config.settings.prod`。
 - MySQL 本机读：`sudo mysql -u root learning`（公网 3306 被挡，仅本机可访问）。
-- ⚠️ SSH 偶发 `Permission denied`（sshpass 认证抖动），失败时重试即可；复杂命令避免多层引号嵌套，宜写成脚本 scp 上去再执行。
+- 凭证：`server-credentials.json`（gitignored，绝不写进任何提交/日志）。
 
 ### 数据库迁移
 ```bash
-# 服务器端
-cd /opt/learning/backend && venv/bin/python manage.py migrate --settings=config.settings.prod
+# 仅当有 model 变更（新增/改字段）时才需要；否则跳过
+cd /opt/learning/backend && DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/bin/python manage.py migrate
 ```
+- 生产库写（修数据）可直接用 `PYTHONPATH=<repo> python3` 跑临时 Django 脚本（务必加 prod settings），执行前**必须向用户确认**，并回读验证、保留可逆信息。
 
 ## 7. 词典补全与数据修复工具链
 
@@ -170,7 +182,7 @@ cd /opt/learning/backend && venv/bin/python manage.py migrate --settings=config.
 
 ## 9. 待办 / 下一步
 
-- **合并发布**：将 `feature/wordbook-account` 合并到 `main`，从 `main` 重新构建部署（遵循第 0 节工作流）。
+- **发布分支**：当前发布分支为 `main`（近期修复均直接合入 `main` 并经用户确认后部署，遵循第 0 节工作流）。下次发布前确认 `main` 与服务器 `/opt/learning/frontend/dist` 一致即可。
 - 后续功能可参考 `docs/plans/` 下的设计文档（IPA / 同步 / 薄弱词 / 词本账户）。
 - 持续观察有道数据质量；新增词补全时务必走带 input 校验的 `enrich_service`。
 
@@ -202,3 +214,29 @@ cd /opt/learning/backend && venv/bin/python manage.py migrate --settings=config.
 待服务器写操作（**需单独确认，未做**）：`study_logs` 加 `source`/`is_new` 精确统计、`user_settings` 表云端同步每日上限、部署 `learning.yusuan.xyz`。当前本地优先用 AsyncStorage，未 migrate。
 
 状态：未合 main、未部署。
+
+## 12. 功能更新（2026-07-22 晚间）：自定义词本逐词删除 / 释义错乱修复 / PWA 图标
+
+### 12.1 自定义词本管理员逐词删除（commit `4d1c88e`，已部署）
+- **后端** `backend/apps/vocab/views.py` — `WordbookViewSet.words` 的 DELETE 分支权限收口：
+  - 系统词本仅**管理员**可删；自定义词本仅**所有者或管理员**可删（无权限返回 403）。
+  - 兼容 `word_id` 走 body 或 query 参数。
+  - 删除 `WordbookWord` 关联时，一并 `UserWordProgress.objects.filter(wordbook, word).delete()` 清理孤儿进度（避免重加时误判已掌握）。
+- **前端** `app/wordbook-detail.tsx` — 仅当词本 `type==='custom'` 且当前用户为管理员/所有者时，每个单词行显示删除按钮（垃圾桶图标）；点击弹确认框，确认后调 `repo.removeWordFromWordbook` 即时移除该词并 `refreshBooks()` 同步词本计数。
+- **DAL** `lib/data/repo.ts` 的 `removeWordFromWordbook` 在 `httpRepo` / `asyncStorageRepo` / `memoryRepo` 均已实现，本地/云端一致。
+- 无 model 变更 → 部署跳过 migrate。
+
+### 12.2 词本单词 `translation` 错乱修复（生产库写，已确认执行，无代码变更）
+- **现象**：自定义词本「默写错误词汇」中 `source` / `reliability` / `innovation` / `modify` / `well-defined` 共 5 词的 `translation`（列表/卡面主释义）被历史旧版查词流程误填成**别的词目**意思（sou 法币 / re: 邮件前缀 / se / mo / well），但 `definitions`（展开详查）正确——即"后面一个释义才对"。
+- **根因**：旧版解析误取别的词目；当前 `app/add-modal.tsx` 已用 `formatChineseSummary(definitions)` 取正确值，不会复发。
+- **修复**：对 5 个 `Word` 行执行 `UPDATE words SET translation = definitions[0] 主义`（生产库写，用户确认），DB 回读确认。高中系统词本干净；全库 3749 词中"释义与主词零字重叠"仅此 5 个（另 3 个 none/hooray/pop 为正常异义，非错乱）。
+
+### 12.3 iOS PWA 添加到主屏幕无图标（commit `2361344`，已部署）
+- **根因**：`app/+html.tsx` 硬编码引用 `/manifest.json` 与 `/icons/icon-1024.png`，但项目**无 `public/` 目录**；Expo `web.output:"static"` 只把 `public/` 拷贝进 `dist`，故构建产物缺这俩文件。线上 nginx 对缺失路径回退到 SPA 的 `index.html`，把 404 伪装成 `200 text/html`（实测 `/icons/icon-1024.png` 返回 19817 字节 HTML）。**iOS 不读 manifest 图标、只用 `apple-touch-icon`**，拿不到真图 → 主屏图标空白/截图。
+- **修复**：
+  - 新增 `public/manifest.json`（192/512/1024 + `maskable` 声明），Expo 构建自动拷贝到 dist 根 → `/manifest.json`。
+  - 新增 `public/icons/`：用 Pillow 把 `assets/images/icon.png`（1024、带透明）压到主题深底 `#0D0D0D` 消除透明通道，生成 1024/512/192/180 及 `maskable` 共 5 张 PNG。
+  - `app/+html.tsx`：`apple-touch-icon` 补 `sizes="180x180"` 并保留 1024，iOS 优先取精确尺寸。
+- **线上验证**：`/icons/icon-1024.png` → `200 image/png`（43094B）；`/icons/icon-180.png` → `200 image/png`（9181B）；`/manifest.json` → `200 application/json`（892B，此前为 `text/html`）。
+- **用户侧**：已加过旧图标的主屏入口需先删除 → 刷新页面 → 重新「添加到主屏幕」，iOS 才会重新抓取图标。
+- **注意**：PWA 资源走 Expo `public/` 机制；若日后换图标，改 `assets/images/icon.png` 后重新构建即可，`public/icons/` 由脚本生成（见仓库根 `icon-generate` 流程或手动 Pillow 脚本）。
