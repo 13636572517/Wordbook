@@ -39,9 +39,12 @@ export default function LibraryScreen() {
   const load = useCallback(async () => {
     const c: Record<string, number> = {};
     if (USE_CLOUD) {
-      // 云端模式：直接用服务器返回的 word_count，避免逐词本拉全量单词
+      // 云端模式：重新拉取词本列表，取服务端实时 word_count（添加/删除单词后立即可见），
+      // 避免一直用登录时缓存的 wordbooks 快照导致“下面单词数”不更新
+      const fresh = await repo.listWordbooks();
+      const countById = new Map(fresh.map((wb) => [wb.id, wb.wordCount ?? 0]));
       for (const wb of wordbooks) {
-        c[wb.id] = wb.wordCount ?? 0;
+        c[wb.id] = countById.get(wb.id) ?? wb.wordCount ?? 0;
       }
     } else {
       for (const wb of wordbooks) {
