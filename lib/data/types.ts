@@ -68,6 +68,35 @@ export interface UserWordProgress {
 
 export const DEFAULT_EF = 2.5;
 
+// Study log source: where a grade originated. 'study' is the default (learning
+// tab), 'quiz' from the daily quiz module, 'review' from the review module.
+export type StudyLogSource = 'study' | 'quiz' | 'review';
+
+/**
+ * A single study-log entry. Local-first: persisted in AsyncStorage / memory
+ * with `source` and `isNew` so daily stats and the new-word cap work without a
+ * server migration. `source` defaults to 'study', `isNew` to false.
+ */
+export interface StudyLog {
+  userId: ID;
+  wordbookId: ID;
+  wordId: ID;
+  grade: number;
+  ts: number;
+  source?: StudyLogSource;
+  isNew?: boolean;
+}
+
+/**
+ * Local midnight (00:00) timestamp for the calendar day containing `now`.
+ * Used to scope "today" queries (study logs, new-word counts) to a day.
+ */
+export function startOfDayTs(now: number): number {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 // Local id generator. Aligned with the server's `user_id` / primary-key scheme
 // (server uses BigInt/uuid; locally we generate stable random ids).
 export function genId(): string {

@@ -1,6 +1,13 @@
-import type { ID, User, Wordbook, Word, UserWordProgress } from './types';
+import type { ID, User, Wordbook, Word, UserWordProgress, StudyLog, StudyLogSource } from './types';
 
 export type CreateWordbookInput = Omit<Wordbook, 'id' | 'createdAt'>;
+
+// Optional filters for `listStudyLogs`. All are AND-ed; omit a key to ignore.
+export interface ListStudyLogsOpts {
+  sinceTs?: number; // only logs with ts >= sinceTs
+  source?: StudyLogSource; // only logs with this source
+  isNew?: boolean; // only logs whose isNew flag matches
+}
 
 /**
  * Data Access Layer. Every read/write of the app goes through this interface.
@@ -37,6 +44,10 @@ export interface Repository {
   // progress (user x wordbook x word)
   getProgress(userId: ID, wordbookId: ID, wordId: ID): Promise<UserWordProgress | null>;
   setProgress(p: UserWordProgress): Promise<void>;
+
+  // study logs (user x wordbook; local-first, feeds today-stats & new-word cap)
+  addStudyLog(log: StudyLog): Promise<void>;
+  listStudyLogs(userId: ID, wordbookId?: ID, opts?: ListStudyLogsOpts): Promise<StudyLog[]>;
 
   // seed helpers (bulk writes for initial import performance)
   bulkUpsertWords(words: Word[]): Promise<void>;

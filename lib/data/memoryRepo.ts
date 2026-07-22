@@ -1,5 +1,5 @@
-import type { Repository, CreateWordbookInput } from './repo';
-import type { ID, User, Wordbook, Word, UserWordProgress } from './types';
+import type { Repository, CreateWordbookInput, ListStudyLogsOpts } from './repo';
+import type { ID, User, Wordbook, Word, UserWordProgress, StudyLog } from './types';
 import { genId } from './types';
 
 const progressKey = (u: ID, wb: ID, w: ID) => `${u}|${wb}|${w}`;
@@ -15,6 +15,7 @@ class MemoryRepo implements Repository {
   private words = new Map<ID, Word>();
   private membership = new Map<ID, Set<ID>>(); // wordbookId -> Set<wordId>
   private progress = new Map<string, UserWordProgress>();
+  private studyLogs: StudyLog[] = [];
 
   async listUsers(): Promise<User[]> {
     return [...this.users.values()].sort((a, b) => a.createdAt - b.createdAt);
@@ -86,6 +87,24 @@ class MemoryRepo implements Repository {
   }
   async setProgress(p: UserWordProgress): Promise<void> {
     this.progress.set(progressKey(p.userId, p.wordbookId, p.wordId), p);
+  }
+
+  async addStudyLog(log: StudyLog): Promise<void> {
+    this.studyLogs.push({
+      source: 'study',
+      isNew: false,
+      ...log,
+    });
+  }
+  async listStudyLogs(userId: ID, wordbookId?: ID, opts?: ListStudyLogsOpts): Promise<StudyLog[]> {
+    return this.studyLogs.filter((l) => {
+      if (l.userId !== userId) return false;
+      if (wordbookId !== undefined && l.wordbookId !== wordbookId) return false;
+      if (opts?.sinceTs !== undefined && l.ts < opts.sinceTs) return false;
+      if (opts?.source !== undefined && (l.source ?? 'study') !== opts.source) return false;
+      if (opts?.isNew !== undefined && (l.isNew === true) !== opts.isNew) return false;
+      return true;
+    });
   }
 
   // seed helpers (bulk writes for initial import performance)
