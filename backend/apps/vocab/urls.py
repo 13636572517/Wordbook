@@ -24,6 +24,8 @@ urlpatterns = [
     path("words/", views.WordViewSet.as_view({"post": "create"})),
     # 真人发音同源代理（规避 HarmonyOS 跨域播放失败）
     path("tts/", views.TtsProxyView.as_view()),
+    # 词典查询同源代理（规避浏览器/HarmonyOS 跨域，修复自动匹配释义失败）
+    path("dict/", views.DictProxyView.as_view()),
     path("words/<int:pk>/", views.WordViewSet.as_view({"get": "retrieve"})),
     # 一键补全释义（管理员）
     path("enrich/", views.EnrichView.as_view()),

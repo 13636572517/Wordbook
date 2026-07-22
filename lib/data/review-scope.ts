@@ -27,3 +27,33 @@ export async function getRecentWords(
   }
   return result;
 }
+
+/**
+ * Words in `wordbookId` the user has already studied at least once, based on
+ * each word's progress. "Studied" means a progress record exists AND the user
+ * has actually graded it — i.e. `repetitions >= 1`, or `lastReviewTs` is set, or
+ * there is any correct/wrong tally. Words that have never been studied (no
+ * progress, or a bare default record) are excluded. This is the pool used by
+ * 每日测试 so it only quizzes words the user has learned. Progress is isolated
+ * per (user, wordbook, word).
+ */
+export async function getStudiedWords(
+  repo: Repository,
+  userId: string,
+  wordbookId: string,
+): Promise<Word[]> {
+  const words = await repo.getWordsByWordbook(wordbookId);
+  const result: Word[] = [];
+  for (const w of words) {
+    const p = await repo.getProgress(userId, wordbookId, w.id);
+    if (
+      p &&
+      (p.repetitions >= 1 ||
+        p.lastReviewTs != null ||
+        (p.correct ?? 0) + (p.wrong ?? 0) > 0)
+    ) {
+      result.push(w);
+    }
+  }
+  return result;
+}

@@ -13,6 +13,13 @@ import type { WordDefinition, WordExample, WordPhrase } from './data/types';
 
 const YOUDAO_API = 'https://dict.youdao.com/jsonapi_s';
 
+// 云端模式：走后端同源词典代理，规避浏览器 / 华为 HarmonyOS 的跨域拦截
+// （直连 dict.youdao.com 会被 CORS 拦截，导致自动匹配释义失败 → 无法保存）。
+const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
+const DICT_PROXY = __DEV__
+  ? 'http://localhost:8000/api/dict/'
+  : 'https://learning.yusuan.xyz/api/dict/';
+
 // --- Offline cache (lazy-loaded) ---
 let offlineCache: Record<string, DictionaryResult> | null = null;
 
@@ -97,24 +104,30 @@ export async function lookupWord(
     }
   }
 
-  // 2. Fall back to Youdao API (for user-added words not in cache)
+  // 2. Fall back to online lookup (for user-added words not in cache).
+  //    云端：走后端同源代理 /api/dict/（规避跨域）；否则直连有道（原生 App 可用）。
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const params = new URLSearchParams({
-      doctype: 'json',
-      jsonversion: '4',
-      q: trimmed,
-      le: 'en',
-    });
+    let url: string;
+    if (USE_CLOUD) {
+      const params = new URLSearchParams({ q: trimmed });
+      url = `${DICT_PROXY}?${params.toString()}`;
+    } else {
+      const params = new URLSearchParams({
+        doctype: 'json',
+        jsonversion: '4',
+        q: trimmed,
+        le: 'en',
+      });
+      url = `${YOUDAO_API}?${params.toString()}`;
+    }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-
-    const res = await fetch(`${YOUDAO_API}?${params.toString()}`, {
+    const res = await fetch(url, {
       signal: controller.signal,
-      headers: {
-        Accept: 'application/json',
-        Referer: 'https://dict.youdao.com/',
-      },
+      headers: USE_CLOUD
+        ? { Accept: 'application/json' }
+        : { Accept: 'application/json', Referer: 'https://dict.youdao.com/' },
     });
     clearTimeout(timeout);
 
@@ -123,7 +136,8 @@ export async function lookupWord(
     const data: YoudaoResponse = await res.json();
     return parseYoudao(data);
   } catch {
-    // Network error, timeout, or CORS block (web dev only; works on native)
+    // Network error, timeout, or CORS block (direct call on web only)
+    clearTimeout(timeout);
     return null;
   }
 }

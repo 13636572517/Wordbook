@@ -110,6 +110,18 @@ function shuffle<T>(arr: T[]): T[] {
   assert.strictEqual(recent.length, 2, 'recent -> exactly 2 within window');
   assert.ok(!recentIds.has('w8'), 'recent excludes word 8 days ago');
 
+  // studied：仅已学过的词（有 correct/wrong 或 lastReviewTs）。
+  // 到这里 w0..w3 有 correct/wrong，w6/w7/w8 有 lastReviewTs → 共 7 个；w4/w5/w9 无进度被排除。
+  const studied = await pickRange(repo, u.id, A.id, 'studied', { now: NOW });
+  const studiedIds = new Set(studied.map((x) => x.id));
+  assert.strictEqual(studied.length, 7, 'studied -> only words with real progress');
+  for (const id of ['w0', 'w1', 'w2', 'w3', 'w6', 'w7', 'w8']) {
+    assert.ok(studiedIds.has(id), `studied includes ${id}`);
+  }
+  for (const id of ['w4', 'w5', 'w9']) {
+    assert.ok(!studiedIds.has(id), `studied excludes never-studied ${id}`);
+  }
+
   const custom = await pickRange(repo, u.id, A.id, 'custom', {
     now: NOW,
     wordIds: ['w0', 'w1', 'does-not-exist'],

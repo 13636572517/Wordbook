@@ -38,6 +38,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="practice"
+        options={{
+          title: '练习',
+          tabBarIcon: ({ color }) => <TabBarIcon name="pencil" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="library"
         options={{
           title: '词本',
@@ -63,13 +70,6 @@ export default function TabLayout() {
         options={{
           title: '我的',
           tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="practice"
-        options={{
-          title: '练习',
-          tabBarIcon: ({ color }) => <TabBarIcon name="pencil" color={color} />,
         }}
       />
     </Tabs>

@@ -1,7 +1,7 @@
 import type { Repository } from './data/repo';
 import type { Word } from './data/types';
 import { getWeakWordIds } from './data/weak';
-import { getRecentWords } from './data/review-scope';
+import { getRecentWords, getStudiedWords } from './data/review-scope';
 
 // 题目生成 + 范围选择（纯逻辑，可测）。三种题型对应设计文档 §3：
 // 单词默写 / 单词选择题 / 词组默写。范围对应 §3 的 ①全部 ②薄弱词 ③最近N天 ④自选。
@@ -78,7 +78,7 @@ export function genPhrase(word: Word): PhraseQuiz | null {
   return { type: 'phrase', word, meaning: p.meaning, answer: p.phrase, hints };
 }
 
-export type RangeKind = 'all' | 'weak' | 'recent' | 'custom';
+export type RangeKind = 'all' | 'studied' | 'weak' | 'recent' | 'custom';
 
 export interface PickRangeOpts {
   now: number; // 必填（recent 范围据此计算窗口）
@@ -87,11 +87,12 @@ export interface PickRangeOpts {
 }
 
 /**
- * 按范围选取一组词（设计文档 §3 的四种范围）：
- *  - 'all'    : 词本全部词
- *  - 'weak'   : 复用 lib/data/weak.ts 的薄弱词判定，返回该词本薄弱词
- *  - 'recent' : 调 getRecentWords（最近 N 天学过的词）
- *  - 'custom' : 按 opts.wordIds 映射到 repo.getWord（跳过不存在的 id）
+ * 按范围选取一组词（设计文档 §3 的范围）：
+ *  - 'all'     : 词本全部词
+ *  - 'studied' : 该词本中已学过的词（每日测试用，见 getStudiedWords）
+ *  - 'weak'    : 复用 lib/data/weak.ts 的薄弱词判定，返回该词本薄弱词
+ *  - 'recent'  : 调 getRecentWords（最近 N 天学过的词）
+ *  - 'custom'  : 按 opts.wordIds 映射到 repo.getWord（跳过不存在的 id）
  */
 export async function pickRange(
   repo: Repository,
@@ -103,6 +104,8 @@ export async function pickRange(
   switch (range) {
     case 'all':
       return repo.getWordsByWordbook(wordbookId);
+    case 'studied':
+      return getStudiedWords(repo, userId, wordbookId);
     case 'weak': {
       const ids = await getWeakWordIds(repo, userId, wordbookId);
       const idSet = new Set(ids);

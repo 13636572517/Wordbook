@@ -34,14 +34,13 @@ const REVIEW_GRADES: { grade: Grade; label: string; color: string }[] = [
 ];
 
 type QuizType = 'dictation' | 'choice' | 'phrase';
-type QuizRange = 'all' | 'weak' | 'recent' | 'custom';
+type QuizRange = 'studied' | 'weak' | 'recent';
 type Mode = 'menu' | 'quiz' | 'review';
 
 const RANGES: { key: QuizRange; label: string }[] = [
-  { key: 'all', label: '全部' },
+  { key: 'studied', label: '全部已学' },
   { key: 'weak', label: '薄弱词' },
   { key: 'recent', label: '最近7天' },
-  { key: 'custom', label: '自选' },
 ];
 const TYPES: { key: QuizType; label: string }[] = [
   { key: 'dictation', label: '默写' },
@@ -57,8 +56,8 @@ export default function PracticeScreen() {
 
   const [mode, setMode] = useState<Mode>('menu');
 
-  // 每日测试 设置
-  const [quizRange, setQuizRange] = useState<QuizRange>('all');
+  // 每日测试 设置（默认「全部已学」——只测已学过的词）
+  const [quizRange, setQuizRange] = useState<QuizRange>('studied');
   const [quizTypes, setQuizTypes] = useState<QuizType[]>([
     'dictation',
     'choice',
@@ -78,18 +77,16 @@ export default function PracticeScreen() {
     );
   };
 
-  // 范围 → pickRange 参数（自选暂以全部代替，留 TODO）
+  // 范围 → pickRange 参数。三种范围都只覆盖「当前词本已学过的词」：
+  //  - studied：全部已学  - weak：已学中的薄弱词  - recent：最近 7 天学过的词
   const rangeParams = (): { range: RangeKind; opts?: { days?: number } } => {
     switch (quizRange) {
-      case 'all':
-        return { range: 'all' };
+      case 'studied':
+        return { range: 'studied' };
       case 'weak':
         return { range: 'weak' };
       case 'recent':
         return { range: 'recent', opts: { days: 7 } };
-      case 'custom':
-        // TODO: 自选范围暂以「全部」代替，后续支持从词本挑选若干词
-        return { range: 'all' };
     }
   };
 
@@ -286,6 +283,9 @@ export default function PracticeScreen() {
           每日测试
         </Text>
         <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <Text style={[styles.scopeHint, { color: colors.pinyin }]}>
+            仅测试「{wordbook?.name ?? '当前词本'}」中你已学过的单词
+          </Text>
           <Text style={[styles.fieldLabel, { color: colors.text }]}>范围</Text>
           <View style={styles.chipRow}>
             {RANGES.map((r) => (
@@ -313,12 +313,6 @@ export default function PracticeScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          {quizRange === 'custom' && (
-            <Text style={[styles.todoNote, { color: colors.pinyin }]}>
-              自选暂以「全部」代替（TODO）
-            </Text>
-          )}
-
           <Text style={[styles.fieldLabel, { color: colors.text, marginTop: 14 }]}>
             题型（可多选）
           </Text>
@@ -372,6 +366,9 @@ export default function PracticeScreen() {
           复习
         </Text>
         <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <Text style={[styles.scopeHint, { color: colors.pinyin }]}>
+            复习「{wordbook?.name ?? '当前词本'}」中最近学过的单词
+          </Text>
           <Text style={[styles.fieldLabel, { color: colors.text }]}>
             最近 N 天学过的词
           </Text>
@@ -458,10 +455,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  todoNote: {
-    fontSize: 12,
-    marginTop: 8,
-    fontStyle: 'italic',
+  scopeHint: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginBottom: 14,
   },
   primaryBtn: {
     borderRadius: 14,

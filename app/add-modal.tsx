@@ -28,6 +28,7 @@ export default function AddModal() {
   const [wordText, setWordText] = useState('');
   const [translation, setTranslation] = useState('');
   const [looking, setLooking] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [dictResult, setDictResult] = useState<DictionaryResult | null>(null);
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -68,7 +69,11 @@ export default function AddModal() {
   }, []);
 
   const handleSave = async () => {
-    if (!targetBookId) return;
+    if (saving) return;
+    if (!targetBookId) {
+      Alert.alert('无法保存', '未找到目标词本，请返回词本页重试。');
+      return;
+    }
     const trimmedWord = wordText.trim();
     const trimmedTranslation = translation.trim();
     if (!trimmedWord || !trimmedTranslation) {
@@ -86,16 +91,25 @@ export default function AddModal() {
       phrases: dictResult?.phrases as WordPhrase[] | undefined,
       audioUrl: dictResult?.audioUrl,
     };
-    // createWord 由当前 DAL 实现（云端入库 / 本地 upsert），返回落库后的 Word（含服务端 id）
-    const saved = await repo.createWord(w);
-    await repo.addWordToWordbook(targetBookId, saved.id);
-    setWordText('');
-    setTranslation('');
-    setDictResult(null);
-    Alert.alert('已保存！', `“${trimmedWord}” 已添加到「${bookName || wordbook?.name}」`, [
-      { text: '继续添加', style: 'default' },
-      { text: '完成', style: 'cancel', onPress: () => router.back() },
-    ]);
+    setSaving(true);
+    try {
+      // createWord 由当前 DAL 实现（云端入库 / 本地 upsert），返回落库后的 Word（含服务端 id）
+      const saved = await repo.createWord(w);
+      await repo.addWordToWordbook(targetBookId, saved.id);
+      setWordText('');
+      setTranslation('');
+      setDictResult(null);
+      Alert.alert('已保存！', `“${trimmedWord}” 已添加到「${bookName || wordbook?.name}」`, [
+        { text: '继续添加', style: 'default' },
+        { text: '完成', style: 'cancel', onPress: () => router.back() },
+      ]);
+    } catch (e) {
+      // 保存失败要明确提示，避免“点了没反应”的困惑（此前无 try/catch，错误被吞掉）
+      const msg = e instanceof Error ? e.message : '网络错误，请重试';
+      Alert.alert('保存失败', msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -173,14 +187,18 @@ export default function AddModal() {
         <TouchableOpacity
           style={[
             styles.saveButton,
-            { backgroundColor: colors.tint, opacity: canSave ? 1 : 0.35 },
+            { backgroundColor: colors.tint, opacity: canSave && !saving ? 1 : 0.35 },
           ]}
           onPress={handleSave}
-          disabled={!canSave}
+          disabled={!canSave || saving}
           activeOpacity={0.7}
         >
-          <FontAwesome name="check" size={16} color="#0D0D0D" />
-          <Text style={styles.saveText}>保存单词</Text>
+          {saving ? (
+            <ActivityIndicator size="small" color="#0D0D0D" />
+          ) : (
+            <FontAwesome name="check" size={16} color="#0D0D0D" />
+          )}
+          <Text style={styles.saveText}>{saving ? '保存中…' : '保存单词'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

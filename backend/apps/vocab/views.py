@@ -4,6 +4,7 @@
 所有视图通过 GespJWTAuthentication 获取 request.user.id (yusuan user_id)。
 """
 
+import json
 import time
 import urllib.parse
 import urllib.request
@@ -452,6 +453,49 @@ class TtsProxyView(APIView):
             return HttpResponse(data, content_type=ctype)
         except Exception as e:  # noqa: BLE001
             return Response({"error": f"TTS 代理失败: {e}"}, status=502)
+
+
+class DictProxyView(APIView):
+    """词典查询代理：服务端拉取有道 jsonapi_s 并同源回传原始 JSON。
+
+    前端（尤其华为 HarmonyOS / 浏览器 web）直接请求 dict.youdao.com 会被
+    CORS 拦截，导致自动匹配释义失败 → 释义无法自动填充 → 单词无法保存。
+    改为同源 /api/dict/?q=word 由后端代理，前端复用现有 parseYoudao 解析。
+    公开接口（仅代理单词查询，低风险）。
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        q = (request.query_params.get("q") or request.query_params.get("word") or "").strip()
+        if not q:
+            return Response({"error": "q 不能为空"}, status=400)
+        # 仅允许单词/短语，防滥用
+        if len(q) > 60 or not all(c.isalnum() or c in " -'" for c in q):
+            return Response({"error": "非法查询词"}, status=400)
+        params = urllib.parse.urlencode(
+            {"doctype": "json", "jsonversion": "4", "q": q, "le": "en"}
+        )
+        url = "https://dict.youdao.com/jsonapi_s?" + params
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36"
+                    ),
+                    "Referer": "https://dict.youdao.com/",
+                    "Accept": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = resp.read()
+            # 校验是合法 JSON 再回传（有道偶尔返回非 JSON 错误页）
+            parsed = json.loads(data.decode("utf-8"))
+            return Response(parsed)
+        except Exception as e:  # noqa: BLE001
+            return Response({"error": f"词典代理失败: {e}"}, status=502)
 
 
 class MeView(APIView):
