@@ -2,6 +2,7 @@ import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
 import { repo } from '@/lib/data';
 import { getWordbookStats } from '@/lib/data/stats';
+import { getDailyNewWordGoal, setDailyNewWordGoal } from '@/lib/data/settings';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
@@ -33,6 +34,7 @@ export default function ProfileScreen() {
   });
   const [showUserModal, setShowUserModal] = useState(false);
   const [newName, setNewName] = useState('');
+  const [goalInput, setGoalInput] = useState('20');
 
   useFocusEffect(
     useCallback(() => {
@@ -70,6 +72,26 @@ export default function ProfileScreen() {
       })();
     }, [user, wordbooks]),
   );
+
+  // 每日新词目标（每用户全局）：进入页面时载入当前值
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      (async () => {
+        const g = await getDailyNewWordGoal(user.id);
+        setGoalInput(String(g));
+      })();
+    }, [user]),
+  );
+
+  const handleGoalChange = async (text: string) => {
+    setGoalInput(text);
+    if (!user) return;
+    const n = parseInt(text, 10);
+    if (Number.isFinite(n) && n >= 0) {
+      await setDailyNewWordGoal(user.id, n);
+    }
+  };
 
   const handleSwitch = (id: string) => {
     setShowUserModal(false);
@@ -167,6 +189,34 @@ export default function ProfileScreen() {
             {wordbook?.name ?? '未选择'}
           </Text>
         </View>
+
+        {/* 每日新词目标（每用户全局，所有词本共用）*/}
+        <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>
+          学习设置
+        </Text>
+        <View style={[styles.goalCard, { backgroundColor: colors.card }]}>
+          <Text style={[styles.goalLabel, { color: colors.text }]}>
+            每日新词目标
+          </Text>
+          <TextInput
+            style={[
+              styles.goalInput,
+              {
+                backgroundColor: colors.inputBackground,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            value={goalInput}
+            onChangeText={handleGoalChange}
+            keyboardType="numeric"
+            placeholder="20"
+            placeholderTextColor={colors.subtitle}
+          />
+        </View>
+        <Text style={[styles.goalNote, { color: colors.subtitle }]}>
+          全局生效，所有词本共用
+        </Text>
 
         {/* Account List Info（仅本地模式）*/}
         {!USE_CLOUD && (
@@ -435,6 +485,30 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  goalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 14,
+    padding: 16,
+  },
+  goalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  goalInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 16,
+    width: 90,
+    textAlign: 'center',
+  },
+  goalNote: {
+    fontSize: 13,
+    marginTop: 8,
   },
   accountRow: {
     flexDirection: 'row',
