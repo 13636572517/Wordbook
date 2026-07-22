@@ -69,6 +69,10 @@ class MemoryRepo implements Repository {
     this.words.set(word.id, word);
     return word;
   }
+
+  async createWord(word: Word): Promise<Word> {
+    return this.upsertWord(word);
+  }
   async getWordsByWordbook(wordbookId: ID): Promise<Word[]> {
     const set = this.membership.get(wordbookId);
     if (!set) return [];

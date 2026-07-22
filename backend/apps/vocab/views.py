@@ -361,7 +361,7 @@ class WordSearchView(APIView):
 
 
 class WordViewSet(viewsets.ViewSet):
-    """单词查询（按 ID）。"""
+    """单词查询（按 ID）/ 创建或获取（手动添加单词时自动入库）。"""
 
     permission_classes = [IsAuthenticated]
 
@@ -371,6 +371,36 @@ class WordViewSet(viewsets.ViewSet):
         except Word.DoesNotExist:
             return Response({"error": "单词不存在"}, status=404)
         return Response(WordSerializer(word).data)
+
+    def create(self, request):
+        """创建或获取单词（word 唯一）。手动添加单词时调用：
+
+        - 已存在：直接返回已有记录（不覆盖其丰富释义）。
+        - 不存在：用提交字段创建新单词（自动补充释义）。
+        """
+        word = (request.data.get("word") or "").strip().lower()
+        if not word:
+            return Response({"error": "word 不能为空"}, status=400)
+        translation = (request.data.get("translation") or "").strip()
+        pronunciation = request.data.get("pronunciation") or request.data.get("phonetic") or None
+        definitions = request.data.get("definitions")
+        phrases = request.data.get("phrases")
+        examples = request.data.get("examples")
+
+        obj, created = Word.objects.get_or_create(word=word)
+        if created:
+            if translation:
+                obj.translation = translation
+            if pronunciation:
+                obj.pronunciation = pronunciation
+            if definitions is not None:
+                obj.definitions = definitions
+            if phrases is not None:
+                obj.phrases = phrases
+            if examples is not None:
+                obj.examples = examples
+            obj.save()
+        return Response(WordSerializer(obj).data, status=201 if created else 200)
 
 
 class MeView(APIView):

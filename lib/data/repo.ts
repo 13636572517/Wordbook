@@ -37,6 +37,8 @@ export interface Repository {
   listWords(): Promise<Word[]>;
   getWord(id: ID): Promise<Word | null>;
   upsertWord(word: Word): Promise<Word>;
+  /** 创建或获取单词（云端入库/本地 upsert），返回落库后的 Word（含服务端 id）。 */
+  createWord(word: Word): Promise<Word>;
   getWordsByWordbook(wordbookId: ID): Promise<Word[]>;
   addWordToWordbook(wordbookId: ID, wordId: ID): Promise<void>;
   removeWordFromWordbook(wordbookId: ID, wordId: ID): Promise<void>;

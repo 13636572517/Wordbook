@@ -25,11 +25,11 @@ import FlashCard from '@/components/FlashCard';
 
 const ENGLISH = getLanguageByCode('en');
 const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
-const GRADES: { grade: Grade; label: string; color: string }[] = [
-  { grade: 0, label: 'Again', color: '#E5484D' },
-  { grade: 1, label: 'Hard', color: '#F5A623' },
-  { grade: 2, label: 'Good', color: '#30A46C' },
-  { grade: 3, label: 'Easy', color: '#3B82F6' },
+const GRADES: { grade: Grade; label: string; cn: string; color: string }[] = [
+  { grade: 0, label: 'Again', cn: '不会', color: '#E5484D' },
+  { grade: 1, label: 'Hard', cn: '模糊', color: '#F5A623' },
+  { grade: 2, label: 'Good', cn: '认识', color: '#30A46C' },
+  { grade: 3, label: 'Easy', cn: '很熟', color: '#3B82F6' },
 ];
 
 export default function HomeScreen() {
@@ -37,6 +37,10 @@ export default function HomeScreen() {
   const [isFlipped, setIsFlipped] = useState(false);
   const [stats, setStats] = useState<WordbookStats | null>(null);
   const [loading, setLoading] = useState(true);
+  // 首页加载失败时的错误提示（不再无限转圈，显示错误+重试）
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // 当前词的已学习次数（repetitions），用于显示「已掌握 x/3」
+  const [reps, setReps] = useState(0);
   const [cardKey, setCardKey] = useState(0);
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -46,38 +50,55 @@ export default function HomeScreen() {
 
   const loadNext = useCallback(async () => {
     if (!user || !wordbook) return;
+    setLoadError(null);
     const now = Date.now();
-    // 每日新词上限：并行取全局目标值与今日已学新词数（getDailyNewWordGoal 走 AsyncStorage）
-    const [goal, todayCount] = await Promise.all([
-      getDailyNewWordGoal(user.id),
-      getTodayNewWordCount(repo, user.id, wordbook.id, now),
-    ]);
-    const prio = getPriorityIds();
-    const [w, s] = await Promise.all([
-      getNextQuizWord(repo, user.id, wordbook.id, prio, now, goal, todayCount),
-      getWordbookStats(repo, user.id, wordbook.id, now),
-    ]);
-    clearPriorityIds();
-    setWord(w);
-    hasWordRef.current = w != null;
-    setStats(s);
-    setIsFlipped(false);
-    setCardKey((k) => k + 1);
-    setLoading(false);
-    // 云端模式：slim 词表不含释义大字段，选中单词后异步拉取
-    // 完整数据（释义/词组/例句）合并到卡片，不阻塞显示
-    if (USE_CLOUD && w) {
-      const wid = w.id;
-      (async () => {
-        try {
-          const { fetchWordDetail } = await import('@/lib/data/httpRepo');
-          const full = await fetchWordDetail(wid);
-          // 仅当还是同一张卡时才更新，避免旧响应覆盖新词
-          setWord((cur) => (cur && cur.id === wid ? { ...cur, ...full } : cur));
-        } catch { /* 释义加载失败不影响基本学习 */ }
-      })();
+    try {
+      // 每日新词上限：并行取全局目标值与今日已学新词数（getDailyNewWordGoal 走 AsyncStorage）
+      const [goal, todayCount] = await Promise.all([
+        getDailyNewWordGoal(user.id),
+        getTodayNewWordCount(repo, user.id, wordbook.id, now),
+      ]);
+      const prio = getPriorityIds();
+      const [w, s] = await Promise.all([
+        getNextQuizWord(repo, user.id, wordbook.id, prio, now, goal, todayCount),
+        getWordbookStats(repo, user.id, wordbook.id, now),
+      ]);
+      // 取当前词的已学习次数，用于「已掌握 x/3」展示
+      const prog = w ? await repo.getProgress(user.id, wordbook.id, w.id) : null;
+      setReps(prog?.repetitions ?? 0);
+      clearPriorityIds();
+      setWord(w);
+      hasWordRef.current = w != null;
+      setStats(s);
+      setIsFlipped(false);
+      setCardKey((k) => k + 1);
+      setLoading(false);
+      // 云端模式：slim 词表不含释义大字段，选中单词后异步拉取
+      // 完整数据（释义/词组/例句）合并到卡片，不阻塞显示
+      if (USE_CLOUD && w) {
+        const wid = w.id;
+        (async () => {
+          try {
+            const { fetchWordDetail } = await import('@/lib/data/httpRepo');
+            const full = await fetchWordDetail(wid);
+            // 仅当还是同一张卡时才更新，避免旧响应覆盖新词
+            setWord((cur) => (cur && cur.id === wid ? { ...cur, ...full } : cur));
+          } catch { /* 释义加载失败不影响基本学习 */ }
+        })();
+      }
+    } catch (e: any) {
+      // 任何接口异常都停止转圈并提示错误，避免无限等待
+      console.error('首页加载失败', e);
+      setLoadError(e?.message || '加载失败，请重试');
+      setLoading(false);
     }
   }, [user, wordbook]);
+
+  const retryLoad = useCallback(() => {
+    setLoadError(null);
+    setLoading(true);
+    loadNext();
+  }, [loadNext]);
 
   useFocusEffect(
     useCallback(() => {
@@ -124,6 +145,34 @@ export default function HomeScreen() {
       loadNext();
     }
   };
+
+  if (loadError) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.background,
+            paddingTop: insets.top,
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+        ]}
+      >
+        <Text style={[styles.errorTitle, { color: colors.text }]}>加载失败了</Text>
+        <Text style={[styles.errorSub, { color: colors.subtitle }]}>
+          {loadError}
+        </Text>
+        <TouchableOpacity
+          style={[styles.retryButton, { backgroundColor: colors.tint }]}
+          onPress={retryLoad}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.retryText}>重试</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (loading || !user || !wordbook) {
     return (
@@ -220,17 +269,23 @@ export default function HomeScreen() {
             onFlip={setIsFlipped}
           />
           {isFlipped ? (
-            <View style={styles.gradeRow}>
-              {GRADES.map((g) => (
-                <TouchableOpacity
-                  key={g.grade}
-                  style={[styles.gradeButton, { backgroundColor: g.color }]}
-                  onPress={() => handleGrade(g.grade)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.gradeText}>{g.label}</Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.gradeArea}>
+              <Text style={[styles.masteryHint, { color: colors.subtitle }]}>
+                {reps > 0 ? `已掌握进度 ${reps}/3` : '新词 · 选择掌握程度以记录学习'}
+              </Text>
+              <View style={styles.gradeRow}>
+                {GRADES.map((g) => (
+                  <TouchableOpacity
+                    key={g.grade}
+                    style={[styles.gradeButton, { backgroundColor: g.color }]}
+                    onPress={() => handleGrade(g.grade)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.gradeText}>{g.label}</Text>
+                    <Text style={styles.gradeCn}>{g.cn}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           ) : (
             <Text style={[styles.hint, { color: colors.pinyin }]}>
@@ -347,8 +402,16 @@ const styles = StyleSheet.create({
   gradeRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 18,
+    marginTop: 10,
     width: '100%',
+  },
+  gradeArea: {
+    width: '100%',
+  },
+  masteryHint: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   gradeButton: {
     flex: 1,
@@ -362,9 +425,37 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  gradeCn: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    marginTop: 2,
+    opacity: 0.9,
+  },
   hint: {
     marginTop: 22,
     fontSize: 13,
     letterSpacing: 0.3,
+  },
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  errorSub: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 24,
+  },
+  retryButton: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    alignItems: 'center',
+  },
+  retryText: {
+    color: '#0D0D0D',
+    fontSize: 17,
+    fontWeight: '700',
   },
 });

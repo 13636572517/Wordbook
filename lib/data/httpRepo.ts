@@ -129,6 +129,11 @@ function invalidateProgressCache(): void {
 // --- slim 词表 in-flight 去重（并发调用只发一次请求）---
 const wordsInflight = new Map<number, Promise<any[]>>();
 
+/** 清除某词本的 slim 词表缓存（添加/删除单词后调用，确保学习队列立即可见新词）。 */
+export function invalidateWordbookWords(wordbookId: ID): void {
+  wordsInflight.delete(toNum(wordbookId));
+}
+
 // --- 释义数据清洗（历史脏数据可能嵌套对象，直接渲染会 React #31 崩溃）---
 function extractText(v: any): string {
   if (typeof v === 'string') return v.trim();
@@ -285,6 +290,32 @@ export const httpRepo: Repository = {
     return word;
   },
 
+  async createWord(word: Word): Promise<Word> {
+    // 云端手动添加单词：创建或获取（按 word 唯一），返回服务端记录（含数字 id）
+    const data = await api<any>('/words/', {
+      method: 'POST',
+      body: JSON.stringify({
+        word: word.word,
+        translation: word.translation,
+        pronunciation: word.pronunciation ?? word.phonetic ?? null,
+        phonetic: word.pronunciation ?? word.phonetic ?? null,
+        definitions: word.definitions ?? null,
+        phrases: word.phrases ?? null,
+        examples: word.examples ?? null,
+      }),
+    });
+    return {
+      id: toStr(data.id),
+      word: data.word,
+      translation: data.translation,
+      pronunciation: data.pronunciation,
+      phonetic: data.pronunciation ?? undefined,
+      definitions: sanitizeDefinitions(data.definitions),
+      phrases: sanitizePhrases(data.phrases),
+      examples: sanitizeExamples(data.examples),
+    };
+  },
+
   async getWordsByWordbook(wordbookId: ID): Promise<Word[]> {
     // slim=1: 测验/列表流程不需要释义大字段，大幅减小响应体积
     const key = toNum(wordbookId);
@@ -308,6 +339,8 @@ export const httpRepo: Repository = {
       method: 'POST',
       body: JSON.stringify({ word_id: toNum(wordId) }),
     });
+    // 刚添加单词后，使 slim 词表缓存失效，确保学习队列能立即看到新词
+    invalidateWordbookWords(wordbookId);
   },
 
   async removeWordFromWordbook(wordbookId: ID, wordId: ID): Promise<void> {

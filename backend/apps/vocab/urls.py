@@ -21,6 +21,7 @@ urlpatterns = [
     path("settings/", views.UserSettingsView.as_view()),
     # 单词搜索
     path("words/search/", views.WordSearchView.as_view()),
+    path("words/", views.WordViewSet.as_view({"post": "create"})),
     path("words/<int:pk>/", views.WordViewSet.as_view({"get": "retrieve"})),
     # 一键补全释义（管理员）
     path("enrich/", views.EnrichView.as_view()),

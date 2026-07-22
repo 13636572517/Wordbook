@@ -260,6 +260,27 @@ export default function ProfileScreen() {
                 )}
               </View>
             ))}
+            {/* 显式切换 / 退出（本地模式不再藏在点卡片里）*/}
+            <View style={styles.accountActions}>
+              <TouchableOpacity
+                style={[styles.ghostBtn, { borderColor: colors.border }]}
+                onPress={() => setShowUserModal(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.ghostBtnText, { color: colors.text }]}>
+                  切换账号
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ghostBtn, { borderColor: '#E05252' }]}
+                onPress={logout}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.ghostBtnText, { color: '#E05252' }]}>
+                  退出登录
+                </Text>
+              </TouchableOpacity>
+            </View>
           </>
         )}
 
@@ -534,6 +555,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 12,
+  },
+  accountActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  ghostBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+  },
+  ghostBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
   },
   currentBadge: {
     fontSize: 13,

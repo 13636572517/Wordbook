@@ -278,7 +278,10 @@ export default function WordbookDetailScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace('/(tabs)/library');
+          }}
           activeOpacity={0.6}
         >
           <FontAwesome name="chevron-left" size={18} color={colors.text} />
@@ -286,6 +289,13 @@ export default function WordbookDetailScreen() {
         <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
           {name ?? '词本'}
         </Text>
+        <TouchableOpacity
+          style={styles.headerAdd}
+          onPress={() => router.push({ pathname: '/add-modal', params: { wordbookId: id, name } })}
+          activeOpacity={0.6}
+        >
+          <FontAwesome name="plus" size={18} color={colors.text} />
+        </TouchableOpacity>
         <View style={styles.headerRight}>
           <Text style={[styles.countText, { color: colors.subtitle }]}>
             {enrichedCount}/{words.length}
@@ -387,6 +397,13 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     alignItems: 'flex-end',
+  },
+  headerAdd: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
   },
   countText: {
     fontSize: 13,

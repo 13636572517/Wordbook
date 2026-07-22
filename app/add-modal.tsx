@@ -7,7 +7,7 @@ import { formatChineseSummary, lookupWord, type DictionaryResult } from '@/lib/d
 import { lookupIpa } from '@/lib/ipaData';
 import { getLanguageByCode } from '@/lib/languages';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -32,7 +32,14 @@ export default function AddModal() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { wordbook } = useSession();
+  const params = useLocalSearchParams<{ wordbookId?: string; name?: string }>();
+  const wordbookId =
+    typeof params.wordbookId === 'string' ? params.wordbookId : undefined;
+  const bookName = typeof params.name === 'string' ? params.name : undefined;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 目标词本：详情页带入的 wordbookId 优先，否则用当前学习词本
+  const targetBookId = wordbookId ?? wordbook?.id;
 
   const canSave = wordText.trim().length > 0 && translation.trim().length > 0;
 
@@ -61,7 +68,7 @@ export default function AddModal() {
   }, []);
 
   const handleSave = async () => {
-    if (!wordbook) return;
+    if (!targetBookId) return;
     const trimmedWord = wordText.trim();
     const trimmedTranslation = translation.trim();
     if (!trimmedWord || !trimmedTranslation) {
@@ -79,12 +86,13 @@ export default function AddModal() {
       phrases: dictResult?.phrases as WordPhrase[] | undefined,
       audioUrl: dictResult?.audioUrl,
     };
-    await repo.upsertWord(w);
-    await repo.addWordToWordbook(wordbook.id, w.id);
+    // createWord 由当前 DAL 实现（云端入库 / 本地 upsert），返回落库后的 Word（含服务端 id）
+    const saved = await repo.createWord(w);
+    await repo.addWordToWordbook(targetBookId, saved.id);
     setWordText('');
     setTranslation('');
     setDictResult(null);
-    Alert.alert('已保存！', `“${trimmedWord}” 已添加到「${wordbook.name}」`, [
+    Alert.alert('已保存！', `“${trimmedWord}” 已添加到「${bookName || wordbook?.name}」`, [
       { text: '继续添加', style: 'default' },
       { text: '完成', style: 'cancel', onPress: () => router.back() },
     ]);
@@ -101,7 +109,7 @@ export default function AddModal() {
 
       <View style={styles.headerRow}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>
-          添加单词{wordbook ? ` · ${wordbook.name}` : ''}
+          添加单词{bookName ? ` · ${bookName}` : (wordbook ? ` · ${wordbook.name}` : '')}
         </Text>
         <TouchableOpacity
           onPress={() => router.back()}

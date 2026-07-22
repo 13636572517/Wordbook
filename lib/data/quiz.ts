@@ -84,6 +84,8 @@ export async function getNextQuizWord(
   todayNewWordCount = 0,
 ): Promise<Word | null> {
   const words = await repo.getWordsByWordbook(wordbookId);
+  // 新词按字母 A→Z 排序：保证从 a 开始顺序学习（到期复习仍按 due 优先，不受影响）
+  words.sort((a, b) => a.word.localeCompare(b.word));
   if (words.length === 0) return null;
   const progresses = new Map<string, UserWordProgress>();
   for (const w of words) {

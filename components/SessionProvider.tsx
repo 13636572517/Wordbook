@@ -59,6 +59,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [wordbooks, setWordbooks] = useState<Wordbook[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  // 登录成功后「会话加载」失败时的错误提示（不再无限转圈，回到登录界面并提示重试）
+  const [loginError, setLoginError] = useState('');
 
   const reloadBooks = useCallback(async (): Promise<Wordbook[]> => {
     const wbs = await repo.listWordbooks();
@@ -205,33 +207,44 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }
   if (!user) {
     return USE_CLOUD ? (
-      <CloudLoginScreen onSuccess={() => {
-        // 登录成功后重新加载会话
-        setLoading(true);
-        (async () => {
-          // 获取管理员状态
-          try {
-            const { fetchMe } = await import('@/lib/data/httpRepo');
-            const me = await fetchMe();
-            setIsAdmin(me.is_admin);
-          } catch { /* ignore */ }
-          const us = await repo.listUsers();
-          setUsers(us);
-          const u = us[0] ?? null;
-          if (u) {
-            setUser(u);
-            await saveActiveUser(u.id);
-          }
-          const wbs = await reloadBooks();
-          let activeWbId = await loadActiveWordbook();
-          if (!activeWbId || !wbs.find((w) => w.id === activeWbId)) {
-            activeWbId = wbs.find((w) => w.type === 'system')?.id ?? wbs[0]?.id ?? null;
-            if (activeWbId) await saveActiveWordbook(activeWbId);
-          }
-          setWordbook(wbs.find((w) => w.id === activeWbId) ?? null);
-          setLoading(false);
-        })();
-      }} />
+      <CloudLoginScreen
+        externalError={loginError}
+        onSuccess={() => {
+          // 登录成功后重新加载会话
+          setLoading(true);
+          setLoginError('');
+          (async () => {
+            try {
+              // 获取管理员状态
+              try {
+                const { fetchMe } = await import('@/lib/data/httpRepo');
+                const me = await fetchMe();
+                setIsAdmin(me.is_admin);
+              } catch { /* ignore */ }
+              const us = await repo.listUsers();
+              setUsers(us);
+              const u = us[0] ?? null;
+              if (u) {
+                setUser(u);
+                await saveActiveUser(u.id);
+              }
+              const wbs = await reloadBooks();
+              let activeWbId = await loadActiveWordbook();
+              if (!activeWbId || !wbs.find((w) => w.id === activeWbId)) {
+                activeWbId = wbs.find((w) => w.type === 'system')?.id ?? wbs[0]?.id ?? null;
+                if (activeWbId) await saveActiveWordbook(activeWbId);
+              }
+              setWordbook(wbs.find((w) => w.id === activeWbId) ?? null);
+              setLoading(false);
+            } catch (e: any) {
+              // 会话加载失败：停止转圈，回到登录界面并显示错误（可重试登录）
+              console.error('会话加载失败', e);
+              setLoginError(e?.message || '加载会话失败，请重试');
+              setLoading(false);
+            }
+          })();
+        }}
+      />
     ) : (
       <AuthScreen users={users} onPick={switchUser} onCreate={createUser} />
     );
@@ -321,7 +334,13 @@ function AuthScreen({
 }
 
 /** 云端模式：GESP 账号密码登录界面 */
-function CloudLoginScreen({ onSuccess }: { onSuccess: () => void }) {
+function CloudLoginScreen({
+  onSuccess,
+  externalError,
+}: {
+  onSuccess: () => void;
+  externalError?: string;
+}) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -385,8 +404,8 @@ function CloudLoginScreen({ onSuccess }: { onSuccess: () => void }) {
           secureTextEntry
           onSubmitEditing={handleLogin}
         />
-        {error ? (
-          <Text style={styles.loginError}>{error}</Text>
+        {error || externalError ? (
+          <Text style={styles.loginError}>{error || externalError}</Text>
         ) : null}
         <TouchableOpacity
           style={[

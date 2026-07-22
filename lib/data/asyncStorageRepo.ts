@@ -104,6 +104,11 @@ class AsyncStorageRepo implements Repository {
     await write(K.words, all);
     return word;
   }
+
+  async createWord(word: Word): Promise<Word> {
+    // 本地模式：等同 upsertWord（落库并返回含 id 的 Word）
+    return this.upsertWord(word);
+  }
   async getWordsByWordbook(wordbookId: ID): Promise<Word[]> {
     const links = await read<WordbookWord[]>(K.membership, []);
     const ids = new Set(links.filter((l) => l.wordbookId === wordbookId).map((l) => l.wordId));
