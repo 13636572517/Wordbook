@@ -13,7 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useColors from '@/components/useColors';
 import { repo, postStudyLogs } from '@/lib/data';
 import type { Word } from '@/lib/data';
-import { getNextQuizWord } from '@/lib/data/quiz';
+import { getNextQuizWord, getTodayNewWordCount } from '@/lib/data/quiz';
+import { getDailyNewWordGoal } from '@/lib/data/settings';
 import { reviewWord } from '@/lib/data/review';
 import { getWordbookStats, type WordbookStats } from '@/lib/data/stats';
 import { Grade } from '@/lib/sm2';
@@ -46,9 +47,14 @@ export default function HomeScreen() {
   const loadNext = useCallback(async () => {
     if (!user || !wordbook) return;
     const now = Date.now();
+    // 每日新词上限：并行取全局目标值与今日已学新词数（getDailyNewWordGoal 走 AsyncStorage）
+    const [goal, todayCount] = await Promise.all([
+      getDailyNewWordGoal(user.id),
+      getTodayNewWordCount(repo, user.id, wordbook.id, now),
+    ]);
     const prio = getPriorityIds();
     const [w, s] = await Promise.all([
-      getNextQuizWord(repo, user.id, wordbook.id, prio, now),
+      getNextQuizWord(repo, user.id, wordbook.id, prio, now, goal, todayCount),
       getWordbookStats(repo, user.id, wordbook.id, now),
     ]);
     clearPriorityIds();
