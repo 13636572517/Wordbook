@@ -21,7 +21,7 @@ EXPORT_FILE = "/tmp/words_export.json"
 FIXES_FILE = "/tmp/word_fixes.json"
 PROGRESS_FILE = "/tmp/verify_progress.json"
 YOUDAO_API = "https://dict.youdao.com/jsonapi_s"
-SLEEP = 0.55
+SLEEP = float(os.environ.get("VERIFY_SLEEP", "0.55"))
 
 
 # --- 解析逻辑（与 backend/apps/vocab/enrich_service.py 完全一致）---
@@ -182,7 +182,15 @@ def main():
         start_idx = prog.get("next_idx", 0)
         fixes = prog.get("fixes", [])
         failed_ids = prog.get("failed_ids", [])
-        print(f"续传：从 #{start_idx} 继续，已有 {len(fixes)} 条修复")
+        # 合并 FIXES_FILE 中已有的修复（可能含 HTML 补救数据，避免覆盖）
+        if os.path.exists(FIXES_FILE):
+            known = {f["id"] for f in fixes}
+            for f in json.load(open(FIXES_FILE)):
+                if f["id"] not in known:
+                    fixes.append(f)
+                    known.add(f["id"])
+                    failed_ids = [i for i in failed_ids if i != f["id"]]
+        print(f"续传：从 #{start_idx} 继续，已有 {len(fixes)} 条修复、{len(failed_ids)} 个失败词待重试")
 
     ok = 0
     empty = 0

@@ -126,6 +126,33 @@ def main():
             new_exs = json.dumps(result["examples"], ensure_ascii=False)
             new_pron = result.get("phonetic")
 
+        # 判断是否损坏：音标不一致 → 数据属于别的词 → 修复；
+        # 音标一致 → DB 数据正常（纯 API 投毒）→ 跳过，保留原有高质量数据
+        db_pron = (w.get("pron") or "").strip()
+        if new_pron and db_pron and new_pron.strip() != db_pron:
+            corrupted = True
+        elif not db_pron:
+            # 无音标可比：对比释义文本是否有交集
+            db_first = ""
+            try:
+                dd = json.loads(w.get("defs") or "[]")
+                db_first = (dd[0].get("definition", "") if dd else "")
+            except Exception:
+                pass
+            html_first = result["definitions"][0]["definition"] if result and result["definitions"] else ""
+            # 任一 4 字以上中文片段重合即视为一致
+            corrupted = not any(
+                seg in db_first for seg in
+                [html_first[i:i+4] for i in range(0, max(len(html_first) - 3, 0))] 
+            ) if (db_first and html_first) else bool(html_first) != bool(db_first)
+        else:
+            corrupted = False
+
+        if not corrupted:
+            print(f"[{i}/{len(failed_ids)}] OK {word_text}（数据正常，跳过）", flush=True)
+            time.sleep(SLEEP)
+            continue
+
         html_fixes.append({
             "id": wid, "word": word_text,
             "definitions": new_defs, "phrases": new_phrs, "examples": new_exs,
