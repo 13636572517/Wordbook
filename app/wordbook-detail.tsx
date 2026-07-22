@@ -36,7 +36,7 @@ export default function WordbookDetailScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { isAdmin } = useSession();
+  const { isAdmin, user, wordbooks, refreshBooks } = useSession();
   const [words, setWords] = useState<Word[]>([]);
   const [loading, setLoading] = useState(true);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
@@ -66,6 +66,36 @@ export default function WordbookDetailScreen() {
       loadWords();
     }, [loadWords]),
   );
+
+  // 仅自定义词本 + 当前用户为所有者或管理员时，显示逐词删除按钮
+  const currentBook = wordbooks.find((w) => w.id === id);
+  const canManage = !!currentBook && currentBook.type === 'custom' &&
+    (isAdmin || currentBook.ownerId === user?.id);
+
+  // 删除单个单词（管理员/所有者）
+  const deleteWord = (word: Word) => {
+    Alert.alert(
+      '删除单词',
+      `确定将「${word.word}」从「${name}」中移除吗？`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await repo.removeWordFromWordbook(id as string, word.id);
+              setWords((prev) => prev.filter((w) => w.id !== word.id));
+              // 同步刷新会话词本计数，返回词本列表时显示最新单词数
+              await refreshBooks();
+            } catch (e: any) {
+              Alert.alert('删除失败', e?.message || '请稍后重试');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   // Enrich a single word with dictionary data
   const enrichWord = async (word: Word): Promise<boolean> => {
@@ -201,6 +231,15 @@ export default function WordbookDetailScreen() {
                     color={hasEnrich ? colors.subtitle : '#0D0D0D'}
                   />
                 )}
+              </TouchableOpacity>
+            )}
+            {canManage && (
+              <TouchableOpacity
+                style={styles.delWordBtn}
+                onPress={() => deleteWord(item)}
+                activeOpacity={0.6}
+              >
+                <FontAwesome name="trash" size={15} color="#E5484D" />
               </TouchableOpacity>
             )}
             <FontAwesome
@@ -493,6 +532,12 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  delWordBtn: {
+    width: 30,
+    height: 30,
     alignItems: 'center',
     justifyContent: 'center',
   },

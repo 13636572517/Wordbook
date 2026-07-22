@@ -128,12 +128,22 @@ class WordbookViewSet(viewsets.ViewSet):
             return Response({"added": created}, status=201)
 
         elif request.method == "DELETE":
-            word_id = request.data.get("word_id")
+            # 兼容 body 与 query 两种传参
+            word_id = request.data.get("word_id") or request.query_params.get("word_id")
             if not word_id:
                 return Response({"error": "需要 word_id"}, status=400)
+            # 权限：系统词本仅管理员可删；自定义词本仅所有者或管理员可删
+            if wb.owner_id is None:
+                if not is_admin_user(user_id):
+                    return Response({"error": "仅管理员可删除系统词本中的单词"}, status=403)
+            else:
+                if not (wb.owner_id == user_id or is_admin_user(user_id)):
+                    return Response({"error": "仅词本所有者或管理员可删除"}, status=403)
             deleted, _ = WordbookWord.objects.filter(
                 wordbook=wb, word_id=word_id
             ).delete()
+            # 一并清理该词在本词本下的学习进度，避免重加时误判为已掌握
+            UserWordProgress.objects.filter(wordbook=wb, word_id=word_id).delete()
             return Response({"removed": deleted})
 
 
