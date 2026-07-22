@@ -5,8 +5,11 @@
 """
 
 import time
+import urllib.parse
+import urllib.request
 
 from django.db.models import Count, Q, Sum
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
@@ -401,6 +404,54 @@ class WordViewSet(viewsets.ViewSet):
                 obj.examples = examples
             obj.save()
         return Response(WordSerializer(obj).data, status=201 if created else 200)
+
+
+class TtsProxyView(APIView):
+    """真人发音代理：服务端拉取有道 dictvoice 音频并同源回传。
+
+    前端（尤其华为 HarmonyOS 的 webview）直接用跨域 Audio() 播放
+    dict.youdao.com 会因 CORS / 自动播放策略静默失败，且无英文 TTS 引擎。
+    改为同源 /api/tts/ 拉流，规避跨域，所有手机浏览器/PWA 均可可靠播放。
+    公开接口（仅代理单个单词发音，低风险）。
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        word = (request.query_params.get("word") or "").strip()
+        if not word:
+            return Response({"error": "word 不能为空"}, status=400)
+        # 仅允许单词/短语，防滥用
+        if len(word) > 60 or not all(
+            c.isalnum() or c in " -'" for c in word
+        ):
+            return Response({"error": "非法 word"}, status=400)
+        ttype = request.query_params.get("type", "1")  # 1=美音 0=英音
+        if ttype not in ("0", "1"):
+            ttype = "1"
+        url = (
+            "https://dict.youdao.com/dictvoice?audio="
+            + urllib.parse.quote(word)
+            + "&type="
+            + ttype
+        )
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36"
+                    ),
+                    "Referer": "https://dict.youdao.com/",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = resp.read()
+                ctype = resp.headers.get("Content-Type", "audio/mpeg")
+            return HttpResponse(data, content_type=ctype)
+        except Exception as e:  # noqa: BLE001
+            return Response({"error": f"TTS 代理失败: {e}"}, status=502)
 
 
 class MeView(APIView):

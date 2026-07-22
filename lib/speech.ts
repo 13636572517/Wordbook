@@ -127,6 +127,7 @@ export async function speakWord(
 
 // --- Web Speech API 实现（同步，无 await）---
 let webVoices: SpeechSynthesisVoice[] = [];
+let dictAudio: HTMLAudioElement | null = null;
 
 function refreshWebVoices(): void {
   try {
@@ -169,36 +170,56 @@ function pickWebVoice(ttsCode: string): SpeechSynthesisVoice | null {
   return exact ?? langVoices[0];
 }
 
-function speakWordWeb(text: string, language: LanguageConfig): void {
-  if (typeof window === 'undefined') return;
-  // 英文单词优先用有道词典真人发音 MP3：
-  // - 华为 HarmonyOS 等设备无 Google TTS 引擎，speechSynthesis 无可用语音会静默失败
-  // - 真人发音比 TTS 更准确自然，且音频播放在所有手机浏览器/PWA 都可靠
-  if (langPrefix(language.ttsCode) === 'en') {
-    // type: 0=英音 1=美音
-    const type = language.ttsCode.toLowerCase().includes('gb') ? 0 : 1;
-    const url = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=${type}`;
+function playAudioWithFallback(urls: string[], onAllFailed: () => void): void {
+  // 必须在用户手势内同步调用 play()（iOS/移动端自动播放限制）
+  if (dictAudio) {
     try {
-      if (dictAudio) {
-        dictAudio.pause();
-        dictAudio = null;
-      }
+      dictAudio.pause();
+    } catch {
+      /* ignore */
+    }
+    dictAudio = null;
+  }
+  let idx = 0;
+  const tryNext = () => {
+    if (idx >= urls.length) {
+      onAllFailed();
+      return;
+    }
+    const url = urls[idx++];
+    try {
       const audio = new Audio(url);
       dictAudio = audio;
-      const fallback = () => speakWithSynthesis(text, language);
-      audio.onerror = fallback;
-      // 必须在用户手势内同步调用 play()
+      audio.onerror = tryNext;
       const p = audio.play();
-      if (p && typeof p.catch === 'function') p.catch(fallback);
-      return;
+      if (p && typeof p.catch === 'function') p.catch(tryNext);
     } catch {
-      // 降级到 Web Speech API
+      tryNext();
     }
+  };
+  tryNext();
+}
+
+function speakWordWeb(text: string, language: LanguageConfig): void {
+  if (typeof window === 'undefined') return;
+  if (langPrefix(language.ttsCode) === 'en') {
+    // 华为 HarmonyOS 等 webview 直接用跨域 Audio() 播放 dict.youdao.com
+    // 会因 CORS / 自动播放策略静默失败，且此类设备无英文 TTS 引擎。
+    // 优先走同源代理 /api/tts/（后端拉流回传），彻底规避跨域。
+    const type = language.ttsCode.toLowerCase().includes('gb') ? 0 : 1;
+    const origin =
+      typeof window !== 'undefined' && window.location
+        ? window.location.origin
+        : '';
+    const proxyUrl = `${origin}/api/tts/?word=${encodeURIComponent(text)}&type=${type}`;
+    const youdaoUrl = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=${type}`;
+    playAudioWithFallback([proxyUrl, youdaoUrl], () =>
+      speakWithSynthesis(text, language),
+    );
+    return;
   }
   speakWithSynthesis(text, language);
 }
-
-let dictAudio: HTMLAudioElement | null = null;
 
 function speakWithSynthesis(text: string, language: LanguageConfig): void {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
