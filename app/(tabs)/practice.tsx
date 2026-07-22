@@ -33,7 +33,7 @@ const REVIEW_GRADES: { grade: Grade; label: string; color: string }[] = [
   { grade: 3, label: 'Easy', color: '#3B82F6' },
 ];
 
-type QuizType = 'dictation' | 'choice' | 'phrase';
+type QuizType = 'dictation' | 'choice' | 'phrase' | 'phrase-blank' | 'sentence-choice';
 type QuizRange = 'studied' | 'weak' | 'recent';
 type Mode = 'menu' | 'quiz' | 'review';
 
@@ -46,6 +46,8 @@ const TYPES: { key: QuizType; label: string }[] = [
   { key: 'dictation', label: '默写' },
   { key: 'choice', label: '选择' },
   { key: 'phrase', label: '词组' },
+  { key: 'phrase-blank', label: '词组填空' },
+  { key: 'sentence-choice', label: '例句选择' },
 ];
 const REVIEW_DAYS = [7, 14, 30];
 

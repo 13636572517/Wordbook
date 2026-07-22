@@ -27,6 +27,25 @@ export interface PhraseQuiz {
   hints: number[]; // 每个词的长度，供 UI 画下划线提示
 }
 
+export interface PhraseBlankQuiz {
+  type: 'phrase-blank';
+  word: Word;
+  phrase: string; // 完整词组（答案展示用）
+  blanked: string; // 带空格的词组 "break the ___"
+  meaning: string; // 词组释义
+  answer: string; // 缺失的单词 "ice"
+  hintLength: number; // 答案字母数
+}
+
+export interface SentenceChoiceQuiz {
+  type: 'sentence-choice';
+  word: Word;
+  sentence: string; // 带空格的例句 "A lion is a dangerous ______."
+  sentenceZh?: string; // 例句中文翻译（提示）
+  options: string[]; // 4 选项
+  answer: string; // 正确单词
+}
+
 function fisherYates<T>(arr: T[]): T[] {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -76,6 +95,102 @@ export function genPhrase(word: Word): PhraseQuiz | null {
   const p = phrases[0];
   const hints = p.phrase.split(' ').map((s) => s.length);
   return { type: 'phrase', word, meaning: p.meaning, answer: p.phrase, hints };
+}
+
+/**
+ * 词组填空：在词组语境中填写目标词（逐字母输入）。
+ * 找包含 word.word 的词组，将目标词替换为 ___。
+ * 找不到则返回 null。
+ */
+export function genPhraseBlank(word: Word): PhraseBlankQuiz | null {
+  const phrases = word.phrases;
+  if (!phrases || phrases.length === 0) return null;
+  const target = word.word.toLowerCase();
+  for (const p of phrases) {
+    const phraseLower = p.phrase.toLowerCase();
+    // 用单词边界匹配（避免 "ice" 匹配到 "notice" 中的子串）
+    const regex = new RegExp(`\\b${escapeRegex(target)}\\b`, 'i');
+    if (regex.test(phraseLower)) {
+      const blanked = p.phrase.replace(regex, '___');
+      return {
+        type: 'phrase-blank',
+        word,
+        phrase: p.phrase,
+        blanked,
+        meaning: p.meaning,
+        answer: word.word,
+        hintLength: word.word.length,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * 例句选择：在例句语境中四选一选出正确单词。
+ * 找包含 word.word（或其变形）的例句，将匹配词替换为 ______。
+ * 从 similarWords 中取 3 个干扰项 + 正确答案，打乱为 4 选项。
+ */
+export function genSentenceChoice(word: Word, similarWords: string[]): SentenceChoiceQuiz | null {
+  const examples = word.examples;
+  if (!examples || examples.length === 0) return null;
+  const target = word.word.toLowerCase();
+
+  // 构建变形列表：原形 + 常见变形
+  const forms = buildWordForms(target);
+
+  for (const ex of examples) {
+    const en = ex.en;
+    // 找例句中匹配目标词或其变形的位置
+    const formsPattern = forms.map(escapeRegex).join('|');
+    const regex = new RegExp(`\\b(${formsPattern})\\b`, 'i');
+    const match = en.match(regex);
+    if (!match) continue;
+
+    const matchedWord = match[1]; // 实际匹配到的形式（如 running）
+    const sentence = en.replace(regex, '______');
+
+    // 从 similarWords 中取 3 个干扰项（排除目标词及其变形）
+    const formsSet = new Set(forms);
+    const distractorPool = similarWords.filter(
+      (s) => !formsSet.has(s.toLowerCase()),
+    );
+    const distractors = fisherYates(distractorPool).slice(0, 3);
+    if (distractors.length < 3) continue; // 干扰项不足，跳过该例句
+
+    const options = fisherYates([matchedWord, ...distractors]);
+    return {
+      type: 'sentence-choice',
+      word,
+      sentence,
+      sentenceZh: ex.zh,
+      options,
+      answer: matchedWord,
+    };
+  }
+  return null;
+}
+
+/** 构建单词变形列表（用于例句匹配） */
+function buildWordForms(base: string): string[] {
+  const forms = new Set<string>([base]);
+  const suffixes = ['s', 'es', 'ing', 'ed', 'ly', 'er', 'est'];
+  for (const s of suffixes) {
+    forms.add(base + s);
+    if (base.endsWith('e')) forms.add(base.slice(0, -1) + s); // make -> making
+    if (base.endsWith('y')) forms.add(base.slice(0, -1) + 'i' + s); // happy -> happily
+  }
+  // 双写辅音: run -> running
+  if (base.length >= 3 && !'aeiouwxy'.includes(base[base.length - 1]) && 'aeiou'.includes(base[base.length - 2]) && !'aeiou'.includes(base[base.length - 3])) {
+    forms.add(base + base[base.length - 1] + 'ing');
+    forms.add(base + base[base.length - 1] + 'ed');
+  }
+  return [...forms];
+}
+
+/** 转义正则特殊字符 */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export type RangeKind = 'all' | 'studied' | 'weak' | 'recent' | 'custom';

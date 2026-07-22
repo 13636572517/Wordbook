@@ -3,7 +3,7 @@ import { memoryRepo } from '../data/memoryRepo';
 import type { Repository } from '../data/repo';
 import type { Word, WordPhrase } from '../data/types';
 import { defaultProgress } from '../data/quiz';
-import { genChoice, genDictation, genPhrase, pickRange } from '../quizgen';
+import { genChoice, genDictation, genPhrase, genPhraseBlank, genSentenceChoice, pickRange } from '../quizgen';
 
 const repo: Repository = memoryRepo;
 const DAY = 24 * 60 * 60 * 1000;
@@ -136,6 +136,84 @@ function shuffle<T>(arr: T[]): T[] {
 
   // 用 shuffle 包装 genChoice 多次验证稳定性（实际由内部随机，上面已覆盖）
   void shuffle;
+
+  // --- ④ genPhraseBlank：有词组/无词组/词组不含目标词 ---
+  const iceWord: Word = {
+    id: 'ice1', word: 'ice', translation: '冰', pronunciation: null,
+    phrases: [
+      { phrase: 'break the ice', meaning: '打破僵局' },
+      { phrase: 'on thin ice', meaning: '如履薄冰' },
+    ],
+  };
+  const pbq = genPhraseBlank(iceWord);
+  assert.ok(pbq, 'genPhraseBlank returns a question for word in phrase');
+  assert.strictEqual(pbq!.type, 'phrase-blank');
+  assert.strictEqual(pbq!.answer, 'ice');
+  assert.strictEqual(pbq!.hintLength, 3);
+  assert.ok(pbq!.blanked.includes('___'), 'blanked contains ___');
+  assert.ok(!pbq!.blanked.toLowerCase().includes('ice'), 'blanked does not contain answer');
+  assert.strictEqual(pbq!.meaning, '打破僵局');
+
+  // 无词组 -> null
+  const noPhraseWord = w('np1', 'test', '测试');
+  assert.strictEqual(genPhraseBlank(noPhraseWord), null, 'no phrases -> null');
+
+  // 词组不含目标词 -> null
+  const mismatchWord: Word = {
+    id: 'mm1', word: 'cat', translation: '猫', pronunciation: null,
+    phrases: [{ phrase: 'dog and pony show', meaning: '做秀' }],
+  };
+  assert.strictEqual(genPhraseBlank(mismatchWord), null, 'phrase not containing word -> null');
+
+  // 边界匹配：“ice” 不应匹配 "notice" 中的子串
+  const noticeWord: Word = {
+    id: 'nt1', word: 'ice', translation: '冰', pronunciation: null,
+    phrases: [{ phrase: 'take notice', meaning: '注意' }],
+  };
+  assert.strictEqual(genPhraseBlank(noticeWord), null, 'should not match substring in notice');
+
+  // --- ⑤ genSentenceChoice：有例句/无例句/例句不含目标词/选项唯一性 ---
+  const runWord: Word = {
+    id: 'run1', word: 'run', translation: '跑', pronunciation: null,
+    examples: [
+      { en: 'She likes to run in the morning.', zh: '她喜欢早上跑步。' },
+      { en: 'The company is running out of money.', zh: '公司快没钱了。' },
+    ],
+  };
+  const similar = ['walk', 'jog', 'sprint', 'dash', 'race', 'hurry', 'rush', 'gallop'];
+  const scq = genSentenceChoice(runWord, similar);
+  assert.ok(scq, 'genSentenceChoice returns a question');
+  assert.strictEqual(scq!.type, 'sentence-choice');
+  assert.strictEqual(scq!.options.length, 4, 'exactly 4 options');
+  assert.ok(scq!.options.includes(scq!.answer), 'options include the answer');
+  assert.strictEqual(new Set(scq!.options).size, 4, 'no duplicate options');
+  assert.ok(scq!.sentence.includes('______'), 'sentence has blank');
+  assert.ok(!scq!.sentence.toLowerCase().includes('run'), 'sentence does not contain answer word');
+  assert.ok(scq!.sentenceZh, 'has Chinese translation');
+
+  // 无例句 -> null
+  const noExWord = w('ne1', 'jump', '跳');
+  assert.strictEqual(genSentenceChoice(noExWord, similar), null, 'no examples -> null');
+
+  // 例句不含目标词 -> null
+  const noMatchWord: Word = {
+    id: 'nm1', word: 'fly', translation: '飞', pronunciation: null,
+    examples: [{ en: 'The bird sings beautifully.' }],
+  };
+  assert.strictEqual(genSentenceChoice(noMatchWord, similar), null, 'example not containing word -> null');
+
+  // 干扰项不足 (< 3) -> null
+  const fewSimilar = ['walk', 'jog'];
+  assert.strictEqual(genSentenceChoice(runWord, fewSimilar), null, 'too few similar words -> null');
+
+  // 变形匹配：running 应匹配 run
+  const runWord2: Word = {
+    id: 'run2', word: 'run', translation: '跑', pronunciation: null,
+    examples: [{ en: 'He is running fast.', zh: '他跑得很快。' }],
+  };
+  const scq2 = genSentenceChoice(runWord2, similar);
+  assert.ok(scq2, 'matches word form (running) for base word (run)');
+  assert.strictEqual(scq2!.answer, 'running', 'answer is the matched form');
 
   console.log('ALL QUIZGEN TESTS PASSED');
 })().catch((e) => {

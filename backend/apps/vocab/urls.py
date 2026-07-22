@@ -21,6 +21,7 @@ urlpatterns = [
     path("settings/", views.UserSettingsView.as_view()),
     # 单词搜索
     path("words/search/", views.WordSearchView.as_view()),
+    path("words/similar/", views.SimilarWordsView.as_view()),
     path("words/", views.WordViewSet.as_view({"post": "create"})),
     # 真人发音同源代理（规避 HarmonyOS 跨域播放失败）
     path("tts/", views.TtsProxyView.as_view()),

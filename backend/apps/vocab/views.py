@@ -544,6 +544,68 @@ class EnrichView(APIView):
         return Response(result, status=202)
 
 
+class SimilarWordsView(APIView):
+    """近义词查询：Datamuse API + 词形变化 fallback，Redis 缓存 7 天。"""
+
+    permission_classes = [IsAuthenticated]
+
+    # 常见词形变化后缀
+    SUFFIXES = ["ing", "ed", "s", "es", "ly", "tion", "ment", "ness", "er", "est", "ful", "less", "able", "ible"]
+
+    def get(self, request):
+        word = (request.query_params.get("word") or "").strip().lower()
+        if not word:
+            return Response({"error": "word 不能为空"}, status=400)
+        if len(word) > 60 or not all(c.isalnum() or c in " -'" for c in word):
+            return Response({"error": "非法 word"}, status=400)
+
+        # 1. 查 Redis 缓存
+        from django_redis import get_redis_connection
+        r = get_redis_connection("default")
+        cache_key = f"learning:similar:{word}"
+        cached = r.get(cache_key)
+        if cached:
+            return Response(json.loads(cached))
+
+        # 2. 调 Datamuse API
+        similar = []
+        try:
+            url = f"https://api.datamuse.com/words?ml={urllib.parse.quote(word)}&max=15"
+            req = urllib.request.Request(url, headers={"User-Agent": "WordHoard/1.0"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            similar = [item["word"] for item in data if item.get("word")]
+        except Exception:  # noqa: BLE001
+            pass  # fallback 到词形变化
+
+        # 3. 补充词形变化
+        forms = set()
+        for suffix in self.SUFFIXES:
+            forms.add(word + suffix)
+            if word.endswith("e"):
+                forms.add(word[:-1] + suffix)  # e.g. make -> making
+            if word.endswith("y"):
+                forms.add(word[:-1] + "i" + suffix)  # e.g. happy -> happiness
+        # 双写辅音 (run -> running)
+        if len(word) >= 3 and word[-1] not in "aeiouwxy" and word[-2] in "aeiou" and word[-3] not in "aeiou":
+            forms.add(word + word[-1] + "ing")
+            forms.add(word + word[-1] + "ed")
+
+        # 4. 合并、去重、去除目标词本身
+        all_words = list(dict.fromkeys(similar + list(forms)))  # 保序去重
+        all_words = [w for w in all_words if w != word and w.isalpha()][:12]
+
+        result = {"word": word, "similar": all_words}
+
+        # 5. 写缓存 (7 天)
+        try:
+            r.setex(cache_key, 7 * 86400, json.dumps(result))
+        except Exception:  # noqa: BLE001
+            pass
+
+        return Response(result)
+
+
 class EnrichStopView(APIView):
     """停止补全任务（仅管理员）。"""
 
