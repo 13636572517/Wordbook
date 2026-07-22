@@ -2,6 +2,8 @@ import assert from 'node:assert';
 import { memoryRepo } from '../memoryRepo';
 import { seedBuiltInWordbooks } from '../seedWordbooks';
 import { SEED_WORDS } from '../../seedWords';
+import { SEED_WORDS_CET4 } from '../../seedWordsCet4';
+import { SEED_WORDS_CET6 } from '../../seedWordsCet6';
 
 (async () => {
   await seedBuiltInWordbooks(memoryRepo);
@@ -17,11 +19,14 @@ import { SEED_WORDS } from '../../seedWords';
   assert.ok(hsWords.every((w) => w.id.startsWith('w_')), 'word ids use w_ prefix');
 
   const cet4 = books.find((b) => b.level === 'cet4')!;
-  assert.strictEqual(
-    (await memoryRepo.getWordsByWordbook(cet4.id)).length,
-    0,
-    'cet4 is an empty placeholder',
-  );
+  const cet4Words = await memoryRepo.getWordsByWordbook(cet4.id);
+  assert.strictEqual(cet4Words.length, SEED_WORDS_CET4.length, 'cet4 book seeded with full list');
+  assert.ok(cet4Words.every((w) => w.id.startsWith('cet4_')), 'cet4 word ids use cet4_ prefix');
+
+  const cet6 = books.find((b) => b.level === 'cet6')!;
+  const cet6Words = await memoryRepo.getWordsByWordbook(cet6.id);
+  assert.strictEqual(cet6Words.length, SEED_WORDS_CET6.length, 'cet6 book seeded with full list');
+  assert.ok(cet6Words.every((w) => w.id.startsWith('cet6_')), 'cet6 word ids use cet6_ prefix');
 
   // idempotent re-seed
   await seedBuiltInWordbooks(memoryRepo);
