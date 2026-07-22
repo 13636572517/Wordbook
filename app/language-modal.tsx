@@ -24,7 +24,13 @@ export default function LanguageModal() {
 
   const handleSelect = async (lang: LanguageConfig) => {
     await setSelectedLanguage(lang.code);
-    router.back();
+    if (router.canDismiss()) router.dismiss();
+    else router.back();
+  };
+
+  const closeModal = () => {
+    if (router.canDismiss()) router.dismiss();
+    else router.back();
   };
 
   const renderItem = ({ item }: { item: LanguageConfig }) => {
@@ -69,7 +75,7 @@ export default function LanguageModal() {
           Choose Language
         </Text>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={closeModal}
           style={styles.closeButton}
           activeOpacity={0.6}
         >

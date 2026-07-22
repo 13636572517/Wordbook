@@ -39,6 +39,16 @@ export default function AddModal() {
   const bookName = typeof params.name === 'string' ? params.name : undefined;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 关闭本弹窗：模态页优先用 router.dismiss()（web/HarmonyOS 上 router.back() 可能为 no-op），
+  // 无模态可消时退化为 router.back()
+  const closeModal = useCallback(() => {
+    if (router.canDismiss()) {
+      router.dismiss();
+    } else {
+      router.back();
+    }
+  }, []);
+
   // 目标词本：详情页带入的 wordbookId 优先，否则用当前学习词本
   const targetBookId = wordbookId ?? wordbook?.id;
 
@@ -101,7 +111,7 @@ export default function AddModal() {
       setDictResult(null);
       Alert.alert('已保存！', `“${trimmedWord}” 已添加到「${bookName || wordbook?.name}」`, [
         { text: '继续添加', style: 'default' },
-        { text: '完成', style: 'cancel', onPress: () => router.back() },
+        { text: '完成', style: 'cancel', onPress: () => closeModal() },
       ]);
     } catch (e) {
       // 保存失败要明确提示，避免“点了没反应”的困惑（此前无 try/catch，错误被吞掉）
@@ -126,7 +136,7 @@ export default function AddModal() {
           添加单词{bookName ? ` · ${bookName}` : (wordbook ? ` · ${wordbook.name}` : '')}
         </Text>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={closeModal}
           style={styles.closeButton}
           activeOpacity={0.6}
         >
