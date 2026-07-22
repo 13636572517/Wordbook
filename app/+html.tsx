@@ -25,6 +25,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
           content="black-translucent"
         />
         <meta name="apple-mobile-web-app-title" content="御算词擎" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
         <link rel="apple-touch-icon" href="/icons/icon-1024.png" />
 
         {/* Android PWA */}
