@@ -65,6 +65,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="practice"
+        options={{
+          title: '练习',
+          tabBarIcon: ({ color }) => <TabBarIcon name="pencil" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

@@ -11,9 +11,10 @@ import { router } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useColors from '@/components/useColors';
-import { repo } from '@/lib/data';
+import { repo, postStudyLogs } from '@/lib/data';
 import type { Word } from '@/lib/data';
-import { getNextQuizWord } from '@/lib/data/quiz';
+import { getNextQuizWord, getTodayNewWordCount } from '@/lib/data/quiz';
+import { getDailyNewWordGoal } from '@/lib/data/settings';
 import { reviewWord } from '@/lib/data/review';
 import { getWordbookStats, type WordbookStats } from '@/lib/data/stats';
 import { Grade } from '@/lib/sm2';
@@ -46,9 +47,14 @@ export default function HomeScreen() {
   const loadNext = useCallback(async () => {
     if (!user || !wordbook) return;
     const now = Date.now();
+    // 每日新词上限：并行取全局目标值与今日已学新词数（getDailyNewWordGoal 走 AsyncStorage）
+    const [goal, todayCount] = await Promise.all([
+      getDailyNewWordGoal(user.id),
+      getTodayNewWordCount(repo, user.id, wordbook.id, now),
+    ]);
     const prio = getPriorityIds();
     const [w, s] = await Promise.all([
-      getNextQuizWord(repo, user.id, wordbook.id, prio, now),
+      getNextQuizWord(repo, user.id, wordbook.id, prio, now, goal, todayCount),
       getWordbookStats(repo, user.id, wordbook.id, now),
     ]);
     clearPriorityIds();
@@ -96,7 +102,25 @@ export default function HomeScreen() {
 
   const handleGrade = async (grade: Grade) => {
     if (word && user && wordbook) {
-      await reviewWord(repo, user.id, wordbook.id, word.id, grade, Date.now());
+      const now = Date.now();
+      // 新词判定：此前无进度即首次学习，记录 isNew 供每日新词上限统计
+      const existing = await repo.getProgress(user.id, wordbook.id, word.id);
+      const isNew = existing == null;
+      await reviewWord(repo, user.id, wordbook.id, word.id, grade, now);
+      // 修 StudyLog 断点：评分后上报学习日志（本地经 repo，云端经 httpRepo）
+      if (USE_CLOUD) {
+        await postStudyLogs([{ wordbookId: wordbook.id, wordId: word.id, grade, ts: now }]);
+      } else {
+        await repo.addStudyLog({
+          userId: user.id,
+          wordbookId: wordbook.id,
+          wordId: word.id,
+          grade,
+          ts: now,
+          source: 'study',
+          isNew,
+        });
+      }
       loadNext();
     }
   };

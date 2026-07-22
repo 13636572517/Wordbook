@@ -1,5 +1,6 @@
 import type { Repository } from './repo';
-import type { UserWordProgress } from './types';
+import type { UserWordProgress, StudyLog, Word } from './types';
+import { startOfDayTs } from './types';
 
 export interface WordbookStats {
   total: number;
@@ -9,6 +10,19 @@ export interface WordbookStats {
   mastered: number;
   accuracy: number; // 0..1, 0 when no reviews yet
   streak: number; // consecutive study days (ending today or yesterday)
+}
+
+export interface TodayStatDetail {
+  word: string;
+  grade: number;
+  ts: number;
+}
+
+export interface TodayStats {
+  studied: number; // distinct words studied today
+  mastered: number; // distinct words whose last grade today is Good/Easy (>=2)
+  accuracy: number; // 0..1, mastered/studied, 0 when none
+  details: TodayStatDetail[]; // one entry per word, last grade + ts
 }
 
 const MASTERED_REPETITIONS = 3;
@@ -84,4 +98,47 @@ export async function getWordbookStats(
     accuracy,
     streak: computeStreak(lastReviewTsList, now),
   };
+}
+
+/**
+ * Today's study summary for a single (user, wordbook), scoped to the calendar
+ * day containing `now` (local midnight). `studied` is the count of distinct
+ * words logged today; `mastered`/`accuracy` are based on each word's LAST grade
+ * today (Good/Easy = >=2 counts as mastered); `details` lists one entry per
+ * word with its last grade and timestamp.
+ */
+export async function getTodayStats(
+  repo: Repository,
+  userId: string,
+  wordbookId: string,
+  now: number,
+): Promise<TodayStats> {
+  const logs = await repo.listStudyLogs(userId, wordbookId, { sinceTs: startOfDayTs(now) });
+  if (logs.length === 0) return { studied: 0, mastered: 0, accuracy: 0, details: [] };
+
+  // keep only the latest log per word
+  const lastByWord = new Map<string, StudyLog>();
+  for (const l of logs) {
+    const prev = lastByWord.get(l.wordId);
+    if (!prev || l.ts > prev.ts) lastByWord.set(l.wordId, l);
+  }
+
+  const wordIds = [...lastByWord.keys()];
+  const textById = new Map<string, string>();
+  for (const id of wordIds) {
+    const w: Word | null = await repo.getWord(id);
+    textById.set(id, w ? w.word : id);
+  }
+
+  let mastered = 0;
+  const details: TodayStatDetail[] = [];
+  for (const [id, l] of lastByWord) {
+    if (l.grade >= 2) mastered++;
+    details.push({ word: textById.get(id)!, grade: l.grade, ts: l.ts });
+  }
+  details.sort((a, b) => b.ts - a.ts);
+
+  const studied = lastByWord.size;
+  const accuracy = studied > 0 ? mastered / studied : 0;
+  return { studied, mastered, accuracy, details };
 }

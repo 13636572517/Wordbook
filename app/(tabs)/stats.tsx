@@ -5,11 +5,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import useColors from '@/components/useColors';
 import { repo } from '@/lib/data';
-import { getWordbookStats, type WordbookStats } from '@/lib/data/stats';
+import { getWordbookStats, getTodayStats, type WordbookStats, type TodayStats } from '@/lib/data/stats';
 import { useSession } from '@/components/SessionProvider';
 
 export default function StatsScreen() {
   const [stats, setStats] = useState<WordbookStats | null>(null);
+  const [today, setToday] = useState<TodayStats | null>(null);
   const [loading, setLoading] = useState(true);
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -20,9 +21,13 @@ export default function StatsScreen() {
       let cancelled = false;
       (async () => {
         if (!user || !wordbook) return;
-        const s = await getWordbookStats(repo, user.id, wordbook.id, Date.now());
+        const [s, t] = await Promise.all([
+          getWordbookStats(repo, user.id, wordbook.id, Date.now()),
+          getTodayStats(repo, user.id, wordbook.id, Date.now()),
+        ]);
         if (cancelled) return;
         setStats(s);
+        setToday(t);
         setLoading(false);
       })();
       return () => {
@@ -66,6 +71,61 @@ export default function StatsScreen() {
           </Text>
         </View>
       </View>
+
+      {/* 今日报告 */}
+      {today && (
+        <View style={[styles.todayCard, { backgroundColor: colors.card }]}>
+          <View style={styles.todayTop}>
+            <FontAwesome name="sun-o" size={20} color={colors.tint} />
+            <Text style={[styles.todayTitle, { color: colors.text }]}>今日</Text>
+            <Text style={[styles.todayCount, { color: colors.subtitle }]}>
+              学习 {today.studied} 词
+            </Text>
+          </View>
+
+          <View style={styles.accuracyTop}>
+            <Text style={[styles.accuracyLabel, { color: colors.subtitle }]}>
+              今日掌握率
+            </Text>
+            <Text style={[styles.todayRate, { color: '#30A46C' }]}>
+              {Math.round(today.accuracy * 100)}%
+            </Text>
+          </View>
+          <View style={styles.barBg}>
+            <View
+              style={[
+                styles.barFill,
+                { width: `${Math.round(today.accuracy * 100)}%`, backgroundColor: '#30A46C' },
+              ]}
+            />
+          </View>
+
+          {today.details.length === 0 ? (
+            <Text style={[styles.todayHint, { color: colors.subtitle }]}>
+              今天还没开始学习哦～
+            </Text>
+          ) : (
+            <View style={styles.detailList}>
+              {today.details.map((d, i) => (
+                <View
+                  key={i}
+                  style={[styles.detailRow, { borderColor: colors.border }]}
+                >
+                  <Text style={[styles.detailWord, { color: colors.text }]}>
+                    {d.word}
+                  </Text>
+                  <Text style={[styles.detailGrade, { color: GRADE_COLOR[d.grade] ?? colors.subtitle }]}>
+                    {GRADE_TEXT[d.grade] ?? ''}
+                  </Text>
+                  <Text style={[styles.detailTime, { color: colors.pinyin }]}>
+                    {new Date(d.ts).toLocaleTimeString()}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
 
       <View style={styles.grid}>
         <BigStat label="总词数" value={stats.total} color="#E8E0D4" icon="book" />
@@ -123,6 +183,14 @@ function BigStat({
     </View>
   );
 }
+
+const GRADE_TEXT = ['Again', 'Hard', 'Good', 'Easy'];
+const GRADE_COLOR: Record<number, string> = {
+  0: '#E5484D',
+  1: '#F5A623',
+  2: '#30A46C',
+  3: '#3B82F6',
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -210,5 +278,56 @@ const styles = StyleSheet.create({
   note: {
     fontSize: 13,
     lineHeight: 20,
+  },
+  todayCard: {
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 14,
+  },
+  todayTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  todayTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  todayCount: {
+    fontSize: 14,
+    marginLeft: 'auto',
+  },
+  todayRate: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  todayHint: {
+    fontSize: 13,
+    marginTop: 12,
+  },
+  detailList: {
+    marginTop: 12,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+  },
+  detailWord: {
+    fontSize: 15,
+    fontWeight: '600',
+    flex: 1,
+  },
+  detailGrade: {
+    fontSize: 13,
+    fontWeight: '600',
+    width: 48,
+    textAlign: 'center',
+  },
+  detailTime: {
+    fontSize: 12,
+    width: 64,
+    textAlign: 'right',
   },
 });

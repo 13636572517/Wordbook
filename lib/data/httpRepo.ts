@@ -9,8 +9,8 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { CreateWordbookInput, Repository } from './repo';
-import type { ID, User, UserWordProgress, Word, Wordbook, WordDefinition, WordExample, WordPhrase } from './types';
+import type { CreateWordbookInput, Repository, ListStudyLogsOpts } from './repo';
+import type { ID, User, UserWordProgress, Word, Wordbook, WordDefinition, WordExample, WordPhrase, StudyLog } from './types';
 
 // --- 配置 ---
 const API_BASE = __DEV__
@@ -368,6 +368,20 @@ export const httpRepo: Repository = {
       method: 'POST',
       body: JSON.stringify({ word_ids: wordIds.map(toNum) }),
     });
+  },
+
+  // ===== Study logs (local-first) =====
+  // 云端模式经 postStudyLogs() 上报，本地 addStudyLog 在此为 no-op；
+  // listStudyLogs 云端真实实现待后端 migrate 后补充，当前返回空。
+  async addStudyLog(_log: StudyLog): Promise<void> {
+    // no-op: cloud path uses postStudyLogs()
+  },
+  async listStudyLogs(
+    _userId: ID,
+    _wordbookId?: ID,
+    _opts?: ListStudyLogsOpts,
+  ): Promise<StudyLog[]> {
+    return [];
   },
 };
 

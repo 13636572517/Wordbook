@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Repository, CreateWordbookInput } from './repo';
-import type { ID, User, Wordbook, Word, UserWordProgress, WordbookWord } from './types';
+import type { Repository, CreateWordbookInput, ListStudyLogsOpts } from './repo';
+import type { ID, User, Wordbook, Word, UserWordProgress, WordbookWord, StudyLog } from './types';
 import { genId } from './types';
 
 // Storage keys — aligned with the server `learning` schema tables.
@@ -11,6 +11,7 @@ const K = {
   words: 'vocab_words',
   membership: 'vocab_wordbook_words',
   progress: 'vocab_user_progress',
+  studyLogs: 'vocab_study_logs',
 };
 
 // In-memory snapshot cache. Each key is loaded from disk at most once; writes
@@ -137,6 +138,23 @@ class AsyncStorageRepo implements Repository {
     if (idx >= 0) all[idx] = p;
     else all.push(p);
     await write(K.progress, all);
+  }
+
+  async addStudyLog(log: StudyLog): Promise<void> {
+    const all = await read<StudyLog[]>(K.studyLogs, []);
+    all.push({ source: 'study', isNew: false, ...log });
+    await write(K.studyLogs, all);
+  }
+  async listStudyLogs(userId: ID, wordbookId?: ID, opts?: ListStudyLogsOpts): Promise<StudyLog[]> {
+    const all = await read<StudyLog[]>(K.studyLogs, []);
+    return all.filter((l) => {
+      if (l.userId !== userId) return false;
+      if (wordbookId !== undefined && l.wordbookId !== wordbookId) return false;
+      if (opts?.sinceTs !== undefined && l.ts < opts.sinceTs) return false;
+      if (opts?.source !== undefined && (l.source ?? 'study') !== opts.source) return false;
+      if (opts?.isNew !== undefined && (l.isNew === true) !== opts.isNew) return false;
+      return true;
+    });
   }
 
   // seed helpers (bulk writes, initial import performance)
