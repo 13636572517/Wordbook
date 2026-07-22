@@ -42,12 +42,12 @@ const RANGES: { key: QuizRange; label: string }[] = [
   { key: 'weak', label: '薄弱词' },
   { key: 'recent', label: '最近7天' },
 ];
-const TYPES: { key: QuizType; label: string }[] = [
-  { key: 'dictation', label: '默写' },
-  { key: 'choice', label: '选择' },
-  { key: 'phrase', label: '词组' },
-  { key: 'phrase-blank', label: '词组填空' },
-  { key: 'sentence-choice', label: '例句选择' },
+const TYPES: { key: QuizType; label: string; icon: React.ComponentProps<typeof FontAwesome>['name']; desc: string }[] = [
+  { key: 'dictation', label: '默写', icon: 'pencil', desc: '看释义拼写单词' },
+  { key: 'choice', label: '选择', icon: 'list', desc: '四选一选释义' },
+  { key: 'phrase', label: '词组默写', icon: 'font', desc: '看释义写词组' },
+  { key: 'phrase-blank', label: '词组填空', icon: 'puzzle-piece', desc: '语境中填单词' },
+  { key: 'sentence-choice', label: '例句选择', icon: 'comment', desc: '例句中四选一' },
 ];
 const REVIEW_DAYS = [7, 14, 30];
 
@@ -73,12 +73,6 @@ export default function PracticeScreen() {
   const [reviewFlipped, setReviewFlipped] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
 
-  const toggleType = (k: QuizType) => {
-    setQuizTypes((prev) =>
-      prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k],
-    );
-  };
-
   // 范围 → pickRange 参数。三种范围都只覆盖「当前词本已学过的词」：
   //  - studied：全部已学  - weak：已学中的薄弱词  - recent：最近 7 天学过的词
   const rangeParams = (): { range: RangeKind; opts?: { days?: number } } => {
@@ -92,8 +86,9 @@ export default function PracticeScreen() {
     }
   };
 
-  const startQuiz = () => {
-    if (quizTypes.length === 0) return;
+  const startQuiz = (type?: QuizType) => {
+    if (type) setQuizTypes([type]);
+    if (quizTypes.length === 0 && !type) return;
     setMode('quiz');
   };
 
@@ -267,7 +262,7 @@ export default function PracticeScreen() {
     );
   }
 
-  // 菜单：每日测试 + 复习 两个区块
+  // 菜单：题型卡片 + 复习
   return (
     <View
       style={[
@@ -280,87 +275,60 @@ export default function PracticeScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* 每日测试 */}
-        <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>
-          每日测试
+        {/* 范围选择 */}
+        <Text style={[styles.scopeHint, { color: colors.pinyin }]}>
+          测试「{wordbook?.name ?? '当前词本'}」中已学过的单词
         </Text>
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.scopeHint, { color: colors.pinyin }]}>
-            仅测试「{wordbook?.name ?? '当前词本'}」中你已学过的单词
-          </Text>
-          <Text style={[styles.fieldLabel, { color: colors.text }]}>范围</Text>
-          <View style={styles.chipRow}>
-            {RANGES.map((r) => (
-              <TouchableOpacity
-                key={r.key}
+        <View style={styles.chipRow}>
+          {RANGES.map((r) => (
+            <TouchableOpacity
+              key={r.key}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor:
+                    quizRange === r.key ? colors.tint : colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+              onPress={() => setQuizRange(r.key)}
+              activeOpacity={0.8}
+            >
+              <Text
                 style={[
-                  styles.chip,
-                  {
-                    backgroundColor:
-                      quizRange === r.key ? colors.tint : colors.background,
-                    borderColor: colors.border,
-                  },
+                  styles.chipText,
+                  { color: quizRange === r.key ? '#0D0D0D' : colors.text },
                 ]}
-                onPress={() => setQuizRange(r.key)}
-                activeOpacity={0.8}
               >
-                <Text
-                  style={[
-                    styles.chipText,
-                    { color: quizRange === r.key ? '#0D0D0D' : colors.text },
-                  ]}
-                >
-                  {r.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={[styles.fieldLabel, { color: colors.text, marginTop: 14 }]}>
-            题型（可多选）
-          </Text>
-          <View style={styles.chipRow}>
-            {TYPES.map((t) => {
-              const on = quizTypes.includes(t.key);
-              return (
-                <TouchableOpacity
-                  key={t.key}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: on ? colors.tint : colors.background,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  onPress={() => toggleType(t.key)}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      { color: on ? '#0D0D0D' : colors.text },
-                    ]}
-                  >
-                    {t.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                {r.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-          <TouchableOpacity
-            style={[
-              styles.primaryBtn,
-              {
-                backgroundColor: colors.tint,
-                opacity: quizTypes.length > 0 ? 1 : 0.4,
-              },
-            ]}
-            onPress={startQuiz}
-            disabled={quizTypes.length === 0}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.primaryText}>开始测试</Text>
-          </TouchableOpacity>
+        {/* 题型卡片网格 */}
+        <Text style={[styles.sectionTitle, { color: colors.subtitle, marginTop: 18 }]}>
+          选择题型
+        </Text>
+        <View style={styles.typeGrid}>
+          {TYPES.map((t) => (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.typeCard, { backgroundColor: colors.card }]}
+              onPress={() => startQuiz(t.key)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.typeIconWrap, { backgroundColor: colors.tint + '22' }]}>
+                <FontAwesome name={t.icon} size={20} color={colors.tint} />
+              </View>
+              <Text style={[styles.typeLabel, { color: colors.text }]}>
+                {t.label}
+              </Text>
+              <Text style={[styles.typeDesc, { color: colors.subtitle }]} numberOfLines={1}>
+                {t.desc}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* 复习 */}
@@ -446,6 +414,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+  },
+  typeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  typeCard: {
+    width: '47%',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    gap: 6,
+  },
+  typeIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  typeLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  typeDesc: {
+    fontSize: 12,
   },
   chip: {
     borderRadius: 12,
