@@ -545,6 +545,7 @@ export async function searchWords(q: string): Promise<Word[]> {
 export interface MeInfo {
   user_id: number;
   is_admin: boolean;
+  is_teacher: boolean;
 }
 
 /** 获取当前用户信息（含管理员状态） */
@@ -589,4 +590,80 @@ export async function stopEnrich(): Promise<{ stopped: boolean; reason?: string 
 export async function fetchSimilarWords(word: string): Promise<string[]> {
   const data = await api<{ word: string; similar: string[] }>(`/words/similar/?word=${encodeURIComponent(word)}`);
   return data.similar || [];
+}
+
+// --- 教师/管理员 学员统计 API ---
+
+export interface StudentInfo {
+  user_id: number;
+  nickname: string;
+  phone: string;
+  avatar: string;
+  word_count: number;
+  studied_days: number;
+  recent_days: number;
+  last_active: number;
+}
+
+export interface DailyProgress {
+  date: string;
+  total: number;
+  new_count: number;
+  correct_rate: number;
+}
+
+export interface TeacherWeakWord {
+  word_id: number;
+  word: string;
+  translation: string;
+  ef: number;
+  correct: number;
+  wrong: number;
+  error_rate: number;
+  repetitions: number;
+  interval: number;
+  due: number;
+}
+
+export interface TeacherWrongLog {
+  word_id: number;
+  word: string;
+  translation: string;
+  wrong_count: number;
+  last_wrong_ts: number;
+  sources: string;
+}
+
+export async function fetchStudents(q?: string): Promise<StudentInfo[]> {
+  const params = q ? `?q=${encodeURIComponent(q)}` : '';
+  return api<StudentInfo[]>(`/teacher/students/${params}`);
+}
+
+export async function fetchStudentDaily(
+  userId: number,
+  wordbookId?: number,
+): Promise<DailyProgress[]> {
+  const params = wordbookId ? `?wordbook_id=${wordbookId}` : '';
+  return api<DailyProgress[]>(`/teacher/students/${userId}/daily/${params}`);
+}
+
+export async function fetchStudentWeakWords(
+  userId: number,
+  wordbookId?: number,
+): Promise<TeacherWeakWord[]> {
+  const params = wordbookId ? `?wordbook_id=${wordbookId}` : '';
+  return api<TeacherWeakWord[]>(`/teacher/students/${userId}/weak-words/${params}`);
+}
+
+export async function fetchStudentWrongLogs(
+  userId: number,
+  wordbookId?: number,
+  limit = 50,
+  offset = 0,
+): Promise<{ total: number; items: TeacherWrongLog[] }> {
+  const parts = [`limit=${limit}`, `offset=${offset}`];
+  if (wordbookId) parts.push(`wordbook_id=${wordbookId}`);
+  return api<{ total: number; items: TeacherWrongLog[] }>(
+    `/teacher/students/${userId}/wrong-logs/?${parts.join('&')}`,
+  );
 }

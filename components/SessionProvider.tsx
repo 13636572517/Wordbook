@@ -36,6 +36,7 @@ type SessionValue = {
   wordbooks: Wordbook[];
   loading: boolean;
   isAdmin: boolean;
+  isTeacher: boolean;
   setActiveWordbook: (id: string) => Promise<void>;
   switchUser: (id: string) => Promise<void>;
   createUser: (name: string) => Promise<void>;
@@ -59,6 +60,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [wordbooks, setWordbooks] = useState<Wordbook[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isTeacher, setIsTeacher] = useState(false);
   // 登录成功后「会话加载」失败时的错误提示（不再无限转圈，回到登录界面并提示重试）
   const [loginError, setLoginError] = useState('');
 
@@ -89,6 +91,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             const { fetchMe } = await import('@/lib/data/httpRepo');
             const me = await fetchMe();
             setIsAdmin(me.is_admin);
+            setIsTeacher(me.is_teacher);
           } catch {
             const { isLoggedIn: stillLoggedIn } = await import('@/lib/data/httpRepo');
             if (!(await stillLoggedIn())) {
@@ -195,6 +198,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setWordbook(null);
     setWordbooks([]);
     setIsAdmin(false);
+    setIsTeacher(false);
     setLoading(false);
   }, []);
 
@@ -220,6 +224,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
                 const { fetchMe } = await import('@/lib/data/httpRepo');
                 const me = await fetchMe();
                 setIsAdmin(me.is_admin);
+                setIsTeacher(me.is_teacher);
               } catch { /* ignore */ }
               const us = await repo.listUsers();
               setUsers(us);
@@ -258,6 +263,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         wordbooks,
         loading,
         isAdmin,
+        isTeacher,
         setActiveWordbook,
         switchUser,
         createUser,

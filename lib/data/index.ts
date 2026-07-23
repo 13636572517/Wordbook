@@ -6,9 +6,9 @@ import { httpRepo } from './httpRepo';
 
 // 构建标识：每次部署改变此值可强制所有 chunk 哈希变化，避免客户端缓存新旧碎片。
 // 通过 EXPO_PUBLIC_BUILD_ID 注入；缺失时为 dev。
-export const BUILD_ID = process.env.EXPO_PUBLIC_BUILD_ID || 'dev-20260723v4';
-// 历史版本：20260723v2（cfd021e3）、v3（f30b38a1）已部署；本次 bump 到 v4
-// 强制所有客户端刷新，并修复学习页 USE_CLOUD 缓存不一致导致的释义不显示。
+export const BUILD_ID = process.env.EXPO_PUBLIC_BUILD_ID || 'dev-20260723v5';
+// 历史版本：v2(cfd021e3)、v3(f30b38a1)、v4(31ddc385) 已部署；
+// v5：加入教师/管理员学员统计前端（/teacher/students + /teacher/students/[id]）。
 
 if (typeof window !== 'undefined') {
   (window as any).__APP_BUILD__ = BUILD_ID;

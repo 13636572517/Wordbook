@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import useColors from '@/components/useColors';
 import { repo } from '@/lib/data';
@@ -14,7 +15,8 @@ export default function StatsScreen() {
   const [loading, setLoading] = useState(true);
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, wordbook } = useSession();
+  const { user, wordbook, isAdmin, isTeacher } = useSession();
+  const router = useRouter();
 
   useFocusEffect(
     React.useCallback(() => {
@@ -59,6 +61,17 @@ export default function StatsScreen() {
       <Text style={[styles.heading, { color: colors.text }]}>
         {wordbook.name} · 统计
       </Text>
+
+      {(isAdmin || isTeacher) && (
+        <TouchableOpacity
+          style={[styles.teacherBtn, { backgroundColor: colors.tint }]}
+          onPress={() => router.push('/teacher/students')}
+          activeOpacity={0.7}
+        >
+          <FontAwesome name="users" size={15} color="#0D0D0D" />
+          <Text style={styles.teacherBtnText}>学员学习情况</Text>
+        </TouchableOpacity>
+      )}
 
       <View style={[styles.streakCard, { backgroundColor: colors.card }]}>
         <FontAwesome name="fire" size={28} color={colors.tint} />
@@ -329,5 +342,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     width: 64,
     textAlign: 'right',
+  },
+  teacherBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginBottom: 14,
+  },
+  teacherBtnText: {
+    color: '#0D0D0D',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
