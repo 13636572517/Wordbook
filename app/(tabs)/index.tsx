@@ -11,7 +11,7 @@ import { router } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useColors from '@/components/useColors';
-import { repo, postStudyLogs } from '@/lib/data';
+import { repo, httpRepo, postStudyLogs } from '@/lib/data';
 import type { Word } from '@/lib/data';
 import { getNextQuizWord, getTodayNewWordCount } from '@/lib/data/quiz';
 import { getDailyNewWordGoal } from '@/lib/data/settings';
@@ -23,9 +23,13 @@ import { getLanguageByCode } from '@/lib/languages';
 import { useSession } from '@/components/SessionProvider';
 import FlashCard from '@/components/FlashCard';
 import { speakWord } from '@/lib/speech';
+import { fetchWordDetail } from '@/lib/data/httpRepo';
 
 const ENGLISH = getLanguageByCode('en');
-const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
+// 云端模式判定改用运行时比较（repo===httpRepo），不再依赖编译期
+// EXPO_PUBLIC_USE_CLOUD 常量——该常量曾被 Metro 缓存固化成 false，
+// 导致学习页「异步补充释义」整段被死代码消除（只见翻译、不见释义/例句/词组）。
+const isCloud = repo === httpRepo;
 const GRADES: { grade: Grade; label: string; cn: string; color: string }[] = [
   { grade: 0, label: 'Again', cn: '不会', color: '#E5484D' },
   { grade: 1, label: 'Hard', cn: '模糊', color: '#F5A623' },
@@ -77,16 +81,20 @@ export default function HomeScreen() {
       // 新词自动播放发音
       if (w) speakWord(w.word, ENGLISH);
       // 云端模式：slim 词表不含释义大字段，选中单词后异步拉取
-      // 完整数据（释义/词组/例句）合并到卡片，不阻塞显示
-      if (USE_CLOUD && w) {
+      // 完整数据（释义/词组/例句）合并到卡片，不阻塞显示。
+      // 用运行时 isCloud（repo===httpRepo）判定，避免编译期 USE_CLOUD 被
+      // 死代码消除；只要当前词还没释义就补充，本地模式词已自带释义会跳过。
+      if (isCloud && w && (!w.definitions || w.definitions.length === 0)) {
         const wid = w.id;
         (async () => {
           try {
-            const { fetchWordDetail } = await import('@/lib/data/httpRepo');
             const full = await fetchWordDetail(wid);
             // 仅当还是同一张卡时才更新，避免旧响应覆盖新词
             setWord((cur) => (cur && cur.id === wid ? { ...cur, ...full } : cur));
-          } catch { /* 释义加载失败不影响基本学习 */ }
+          } catch (e) {
+            // 释义补充失败不应静默吞掉，便于排查
+            console.warn('释义补充失败', e);
+          }
         })();
       }
     } catch (e: any) {
@@ -132,7 +140,7 @@ export default function HomeScreen() {
       const isNew = existing == null;
       await reviewWord(repo, user.id, wordbook.id, word.id, grade, now);
       // 修 StudyLog 断点：评分后上报学习日志（本地经 repo，云端经 httpRepo）
-      if (USE_CLOUD) {
+      if (isCloud) {
         await postStudyLogs([{ wordbookId: wordbook.id, wordId: word.id, grade, ts: now, source: 'study', isNew }]);
       } else {
         await repo.addStudyLog({
