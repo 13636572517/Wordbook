@@ -6,6 +6,7 @@ import {
   Text,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
@@ -61,6 +62,8 @@ export default function HomeScreen() {
   // 加练模式：null=未激活，number=本轮剩余新词数（每轮10个，可多轮）
   const [extraRemaining, setExtraRemaining] = useState<number | null>(null);
   const extraRemainingRef = useRef<number | null>(null);
+  // 巩固测试是否已完成（完成后不再显示“开始巩固测试”按钮）
+  const [reviewCompleted, setReviewCompleted] = useState(false);
   const [cardKey, setCardKey] = useState(0);
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -314,6 +317,8 @@ export default function HomeScreen() {
   const exitReview = useCallback(() => {
     setReviewPhase(null);
     setTodayReviewWords([]);
+    // 巩固流程走完后标记已完成，不再重复显示“开始巩固测试”
+    setReviewCompleted(true);
     loadNext();
   }, [loadNext]);
 
@@ -543,7 +548,10 @@ export default function HomeScreen() {
 
       {/* --- 正常学习模式 --- */}
       {!reviewPhase && !word ? (
-        <View style={styles.emptyContainer}>
+        <ScrollView
+          style={styles.emptyScroll}
+          contentContainerStyle={styles.emptyContainer}
+        >
           {todayCountRef.current >= dailyGoalRef.current && dailyGoalRef.current > 0 ? (
             <>
               <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>🎯</Text>
@@ -551,16 +559,18 @@ export default function HomeScreen() {
                 今日新词已学完
               </Text>
               <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
-                已完成 {dailyGoalRef.current} 个新词，来巩固一下吧！
+                已完成 {todayCountRef.current} 个新词{reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}
               </Text>
-              <TouchableOpacity
-                style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]}
-                onPress={startReview}
-              >
-                <Text style={[styles.reviewStartText, { color: '#0D0D0D' }]}>
-                  开始巩固测试
-                </Text>
-              </TouchableOpacity>
+              {!reviewCompleted && (
+                <TouchableOpacity
+                  style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]}
+                  onPress={startReview}
+                >
+                  <Text style={[styles.reviewStartText, { color: '#0D0D0D' }]}>
+                    开始巩固测试
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[styles.extraBtn, { borderColor: colors.tint }]}
                 onPress={confirmExtraPractice}
@@ -581,7 +591,7 @@ export default function HomeScreen() {
               </Text>
             </>
           )}
-        </View>
+        </ScrollView>
       ) : !reviewPhase && word ? (
         <View style={styles.cardArea}>
           {extraRemaining != null && extraRemaining > 0 && (
@@ -705,11 +715,16 @@ const styles = StyleSheet.create({
     color: '#9C9486',
     marginTop: 1,
   },
+  emptyScroll: {
+    flex: 1,
+  },
   emptyContainer: {
     flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingBottom: 60,
+    paddingHorizontal: 20,
   },
   emptyIcon: {
     fontSize: 64,
