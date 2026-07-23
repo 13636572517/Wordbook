@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-07-23 深夜（学习环节闪卡循环修复 + 数据清理 + 部署阻塞问题）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-07-24（练习模块UX修复 + 全局Alert兼容 + 部署路径修正）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -25,6 +25,11 @@
 
 ### 最近提交（main，新→旧）
 ```
+4395cf7 fix: 练习模块5项UX修复（提示位置/默写无提示/选择无大写/加练弹窗）
+be59c66 fix: 全局Alert.alert替换为Web兼容浮层(WebAlertProvider)
+d9dbe8f fix: 修复QuizRunner hooks顺序违规(React error 310)
+(prev)  fix: 练习模块6项UX改进（下划线/提示按钮/返回按钮/首字母大写）
+(prev)  fix: 统计页滚动 + 每日学习完成后重启又进入学习
 2361344 fix: 补齐 PWA 图标与 manifest，修复 iOS 添加到主屏幕无图标
 4d1c88e feat: 自定义词本管理员可逐词删除单词
 b505286 fix: 词本列表「单词数」添加单词后不刷新
@@ -306,4 +311,76 @@ cd /opt/learning/backend && DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/b
 
 ### 13.8 临时脚本（本地，未提交）
 `scripts/` 下曾创建多个一次性探查/部署/清理脚本（`probe_*.py`、`cleanup_*.py`、`check_*.py`、`deploy_now.py`、`deploy.sh`、`compare_files.py` 等）。`deploy.sh` 已上传至服务器 `/opt/learning/`。本地尝试删除失败后手动清理。
+
+## 14. 功能修复（2026-07-24）：部署路径修正 + 练习模块UX + 全局Alert兼容
+
+### 14.1 部署路径修正（关键发现）
+
+**现象**：所有代码改动在手机端/桌面端均不生效。
+
+**根因**：Nginx 配置的前端静态文件目录是 `/opt/learning/frontend/dist/`，而之前所有 rsync 部署都发到了 `/opt/learning/dist/`（错误路径）。导致多天以来的代码改动均未上线。
+
+**修复**：重新 rsync 到正确路径 `/opt/learning/frontend/dist/`，已验证 MD5 一致 + `Cache-Control: no-cache` 生效。
+
+ℹ️ **部署命令（正确版）**：
+```bash
+sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar/' \
+  -e "ssh -o StrictHostKeyChecking=no -o PubkeyAuthentication=no" \
+  dist/ admin@47.103.133.232:/opt/learning/frontend/dist/
+```
+
+### 14.2 统计页滚动 + 每日学习完成状态修复
+
+| 文件 | 改动 |
+|------|------|
+| `app/(tabs)/stats.tsx` | 外层 `<View>` → `<ScrollView>`，解决手机端无法滚动 |
+| `app/(tabs)/index.tsx` | `loadNext` 增加 early return：当 `!inExtra && todayCount >= goal && goal > 0 && prio.length === 0` 时直接 `setWord(null)` 显示“今日已学完”页面 |
+
+**根因**：每日目标完成后 `getNextQuizWord(allowNew=false)` 仍返回到期复习词（如 grade=Again 的词 due=now），导致重启后又直接进入学习。
+
+### 14.3 练习模块 UX 改进（两轮修复）
+
+**第一轮**（分支 `fix/quiz-ux-improvements`）：
+
+| 问题 | 修复 |
+|------|------|
+| 词组默写下划线太短 | 改为连续等宽格式 `_____ ___ ___`（monospace 字体，每字母一个 `_`） |
+| 提示按钮 | 新增「提示（填30%字母）」按钮，随机揭示答案中 30% 的字母，每题限用一次 |
+| 词组填空不体现字母数 | 下划线长度改为与答案字母数一致（`lib/quizgen.ts` 中 `'___'` → `'_'.repeat(target.length)`） |
+| 例句选择首字母大写 | 移除句子的 `textTransform: 'capitalize'` |
+| 返回按钮无效 | `Alert.alert()` 在 Web/PWA 不生效 → 改为自定义确认浮层（取消/确定退出） |
+
+**React error 310 紧急修复**：`useState(showExitConfirm)` 误放在条件 `return` 之后，违反 React hooks 规则。手机端崩溃（error 310），桌面端显示“该范围暂无单词”。已将 `useState` 移到组件顶层。
+
+**第二轮**（分支 `fix/quiz-ux-v2`）：
+
+| 问题 | 修复 |
+|------|------|
+| 默写题型不应有提示 | 提示按钮仅限 `phrase`/`phrase-blank` 题型显示 |
+| 选择题单词首字母大写 | 移除 `qHeadlineEn` 样式（`textTransform: 'capitalize'`） |
+| 词组默写/填空提示位置 | 提示不再填入输入框，改为在题干区显示（如 `提示：b___ _he i__`） |
+| 加练确认弹窗无响应 | `webAlert` 加入 `useCallback` 依赖数组 |
+
+### 14.4 全局 Alert.alert 替换为 Web 兼容浮层
+
+**问题**：React Native Web 的 `Alert.alert()` 在 PWA 环境下不弹窗、回调不触发，影响 16 处功能（加练确认、删除词本、保存反馈等）。
+
+**方案**：新建 `components/WebAlert.tsx`：
+- `WebAlertProvider`：全局 Context Provider，渲染自定义浮层（支持 1/2/多按钮，cancel/destructive 样式）
+- `useWebAlert()` hook：返回 `webAlert(title, message?, buttons?)` 函数，API 兼容 `Alert.alert()`
+- 已在 `app/_layout.tsx` 根布局中接入 Provider
+
+**替换范围**（5 个文件 16 处）：
+- `app/(tabs)/index.tsx`：加练确认弹窗
+- `app/(tabs)/weak.tsx`：加入重练提示
+- `app/(tabs)/library.tsx`：切换词本/删除词本确认
+- `app/wordbook-detail.tsx`：删除单词/批量补全确认
+- `app/add-modal.tsx`：保存成功/失败/验证提示
+
+保留不动：`lib/syncIo.ts` 的 `Alert.alert`（在 `Platform.OS !== 'web'` 分支内，仅 native 触发）。
+
+### 14.5 其他代码审计发现
+
+- QuizRunner.tsx 变量遮蔽：`const results = await Promise.allSettled(...)` 遮蔽组件 state `results` → 重命名为 `settled`
+- 全页面滚动审查：审查所有 15 个 .tsx 页面，仅 stats.tsx 有问题（已修复），其余均正确使用 ScrollView/FlatList
 
