@@ -5,6 +5,7 @@ import {
   View,
   Text,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
@@ -57,6 +58,9 @@ export default function HomeScreen() {
   const [reps, setReps] = useState(0);
   // 当前词是否为复习词（有历史进度），用于显示「复习」标识
   const [isReview, setIsReview] = useState(false);
+  // 加练模式：null=未激活，number=本轮剩余新词数（每轮10个，可多轮）
+  const [extraRemaining, setExtraRemaining] = useState<number | null>(null);
+  const extraRemainingRef = useRef<number | null>(null);
   const [cardKey, setCardKey] = useState(0);
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -88,8 +92,12 @@ export default function HomeScreen() {
       dailyGoalRef.current = goal;
       todayCountRef.current = todayCount;
       const prio = getPriorityIds();
+      // 加练模式下绕过每日新词上限
+      const inExtra = extraRemainingRef.current != null && extraRemainingRef.current > 0;
+      const effectiveGoal = inExtra ? Number.POSITIVE_INFINITY : goal;
+      const effectiveCount = inExtra ? 0 : todayCount;
       const [w, s] = await Promise.all([
-        getNextQuizWord(repo, user.id, wordbook.id, prio, now, goal, todayCount),
+        getNextQuizWord(repo, user.id, wordbook.id, prio, now, effectiveGoal, effectiveCount),
         repo.getWordbookStats(user.id, wordbook.id, now),
       ]);
       // 取当前词的已学习次数，用于「已掌握 x/3」展示
@@ -179,6 +187,12 @@ export default function HomeScreen() {
           isNew,
         });
       }
+      // 加练模式：新词评分后递减剩余数
+      if (isNew && extraRemainingRef.current != null && extraRemainingRef.current > 0) {
+        const next = extraRemainingRef.current - 1;
+        extraRemainingRef.current = next;
+        setExtraRemaining(next);
+      }
       // 必须 await：确保下一词选词（读取进度）发生在 setProgress 的 PUT
       // 落库完成之后，否则进度缓存会读到旧值，刚学过的词仍被当作新词
       // 重新选中，导致卡在单个词无限循环。
@@ -203,6 +217,25 @@ export default function HomeScreen() {
     );
     return words.filter((w): w is Word => w != null);
   }, [user, wordbook]);
+
+  // 加练确认：弹窗二次确认后启动加练模式（每轮+10新词）
+  const confirmExtraPractice = useCallback(() => {
+    Alert.alert(
+      '继续学习',
+      '今日目标已完成，确定要继续学习 10 个新词吗？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确定',
+          onPress: () => {
+            extraRemainingRef.current = 10;
+            setExtraRemaining(10);
+            loadNext();
+          },
+        },
+      ],
+    );
+  }, [loadNext]);
 
   // 开始复习测试流程
   const startReview = useCallback(async () => {
@@ -509,6 +542,14 @@ export default function HomeScreen() {
                   开始巩固测试
                 </Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.extraBtn, { borderColor: colors.tint }]}
+                onPress={confirmExtraPractice}
+              >
+                <Text style={[styles.extraBtnText, { color: colors.tint }]}>
+                  继续学习新词（+10）
+                </Text>
+              </TouchableOpacity>
             </>
           ) : (
             <>
@@ -524,6 +565,11 @@ export default function HomeScreen() {
         </View>
       ) : !reviewPhase && word ? (
         <View style={styles.cardArea}>
+          {extraRemaining != null && extraRemaining > 0 && (
+            <View style={styles.extraBadge}>
+              <Text style={styles.extraBadgeText}>加练中 · 剩余 {extraRemaining} 词</Text>
+            </View>
+          )}
           {isReview && (
             <View style={styles.reviewBadge}>
               <Text style={styles.reviewBadgeText}>复习</Text>
@@ -804,6 +850,31 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   reviewBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  extraBtn: {
+    marginTop: 12,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  extraBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  extraBadge: {
+    alignSelf: 'center',
+    backgroundColor: '#3B82F6',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginBottom: 8,
+  },
+  extraBadgeText: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
