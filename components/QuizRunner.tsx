@@ -76,6 +76,7 @@ export default function QuizRunner({
   const [questions, setQuestions] = useState<Quiz[]>([]);
   const [idx, setIdx] = useState(0);
   const [results, setResults] = useState<ResultRow[]>([]);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,7 +239,6 @@ export default function QuizRunner({
   }
 
   const q = questions[idx];
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.progressRow}>
