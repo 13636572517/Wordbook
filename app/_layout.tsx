@@ -11,6 +11,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { SessionProvider } from '@/components/SessionProvider';
+import { WebAlertProvider } from '@/components/WebAlert';
 import { useColorScheme } from '@/components/useColorScheme';
 
 export { ErrorBoundary } from 'expo-router';
@@ -55,6 +56,7 @@ function RootLayoutNav() {
       value={colorScheme === 'light' ? DefaultTheme : CustomDarkTheme}
     >
       <SessionProvider>
+        <WebAlertProvider>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen
@@ -82,6 +84,7 @@ function RootLayoutNav() {
           />
           <Stack.Screen name="+not-found" />
         </Stack>
+        </WebAlertProvider>
       </SessionProvider>
     </ThemeProvider>
   );

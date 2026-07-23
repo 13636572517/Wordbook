@@ -129,11 +129,11 @@ export default function QuizRunner({
       let similarMap: Map<string, string[]> = new Map();
       if (types.includes('sentence-choice')) {
         const candidates = quizWords.slice(0, 10);
-        const results = await Promise.allSettled(
+        const settled = await Promise.allSettled(
           candidates.map((w) => fetchSimilarWords(w.word)),
         );
         candidates.forEach((w, i) => {
-          const r = results[i];
+          const r = settled[i];
           if (r.status === 'fulfilled' && r.value.length >= 3) {
             similarMap.set(w.id, r.value);
           }

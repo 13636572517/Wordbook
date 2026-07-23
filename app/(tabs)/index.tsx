@@ -5,7 +5,6 @@ import {
   View,
   Text,
   ActivityIndicator,
-  Alert,
   ScrollView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -27,6 +26,7 @@ import FlashCard from '@/components/FlashCard';
 import { speakWord } from '@/lib/speech';
 import { fetchWordDetail } from '@/lib/data/httpRepo';
 import QuizRunner from '@/components/QuizRunner';
+import { useWebAlert } from '@/components/WebAlert';
 
 const ENGLISH = getLanguageByCode('en');
 // 云端模式判定改用运行时比较（repo===httpRepo），不再依赖编译期
@@ -68,6 +68,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, wordbook } = useSession();
+  const webAlert = useWebAlert();
   const activeWbRef = useRef<string | null>(null);
   const hasWordRef = useRef(false);
 
@@ -233,7 +234,7 @@ export default function HomeScreen() {
 
   // 加练确认：弹窗二次确认后启动加练模式（每轮+10新词）
   const confirmExtraPractice = useCallback(() => {
-    Alert.alert(
+    webAlert(
       '继续学习',
       '今日目标已完成，确定要继续学习 10 个新词吗？',
       [

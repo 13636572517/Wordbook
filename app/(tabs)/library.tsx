@@ -1,4 +1,5 @@
 import { useSession } from '@/components/SessionProvider';
+import { useWebAlert } from '@/components/WebAlert';
 import useColors from '@/components/useColors';
 import type { Wordbook } from '@/lib/data';
 import { repo } from '@/lib/data';
@@ -8,7 +9,6 @@ import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     ScrollView,
     StyleSheet,
     Text,
@@ -31,6 +31,7 @@ export default function LibraryScreen() {
     createWordbook,
     refreshBooks,
   } = useSession();
+  const webAlert = useWebAlert();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
@@ -66,12 +67,12 @@ export default function LibraryScreen() {
 
   const setAsActive = (wb: Wordbook) => {
     setActiveWordbook(wb.id);
-    Alert.alert('已切换', `正在学习「${wb.name}」，去学习标签开始吧`);
+    webAlert('已切换', `正在学习「${wb.name}」，去学习标签开始吧`);
   };
 
   const remove = (wb: Wordbook) => {
     if (wb.type !== 'custom') return;
-    Alert.alert('删除词本', `确定删除「${wb.name}」？学习进度也会一并删除。`, [
+    webAlert('删除词本', `确定删除「${wb.name}」？学习进度也会一并删除。`, [
       { text: '取消', style: 'cancel' },
       {
         text: '删除',

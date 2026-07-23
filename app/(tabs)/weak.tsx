@@ -5,7 +5,6 @@ import {
   Text,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
   ScrollView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -17,6 +16,7 @@ import type { Word, WordDefinition, WordPhrase, WordExample } from '@/lib/data';
 import { getWeakWordIds } from '@/lib/data/weak';
 import { setPriorityIds } from '@/lib/quizSelection';
 import { useSession } from '@/components/SessionProvider';
+import { useWebAlert } from '@/components/WebAlert';
 
 const isCloud = repo === httpRepo;
 
@@ -24,6 +24,7 @@ export default function WeakScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, wordbook } = useSession();
+  const webAlert = useWebAlert();
   const [words, setWords] = useState<Word[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export default function WeakScreen() {
   const practiceAll = () => {
     if (words.length === 0) return;
     setPriorityIds(words.map((w) => w.id));
-    Alert.alert('已加入重练', '已把薄弱词加入重练队列，请切换到「Vocab」标签开始练习。');
+    webAlert('已加入重练', '已把薄弱词加入重练队列，请切换到「Vocab」标签开始练习。');
   };
 
   const handleWordPress = async (w: Word) => {
@@ -69,7 +70,7 @@ export default function WeakScreen() {
 
   const handleRemediate = (w: Word) => {
     setPriorityIds([w.id]);
-    Alert.alert('已加入重练', `「${w.word}」已加入重练队列。`);
+    webAlert('已加入重练', `「${w.word}」已加入重练队列。`);
   };
 
   return (

@@ -1,5 +1,6 @@
 import EnrichModal from '@/components/EnrichModal';
 import { useSession } from '@/components/SessionProvider';
+import { useWebAlert } from '@/components/WebAlert';
 import useColors from '@/components/useColors';
 import type { Word } from '@/lib/data';
 import { repo } from '@/lib/data';
@@ -12,7 +13,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Platform,
     StyleSheet,
@@ -37,6 +37,7 @@ export default function WordbookDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { isAdmin, user, wordbooks, refreshBooks } = useSession();
+  const webAlert = useWebAlert();
   const [words, setWords] = useState<Word[]>([]);
   const [loading, setLoading] = useState(true);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
@@ -72,7 +73,7 @@ export default function WordbookDetailScreen() {
 
   // 删除单个单词（管理员/所有者）
   const deleteWord = (word: Word) => {
-    Alert.alert(
+    webAlert(
       '删除单词',
       `确定将「${word.word}」从「${name}」中移除吗？`,
       [
@@ -87,7 +88,7 @@ export default function WordbookDetailScreen() {
               // 同步刷新会话词本计数，返回词本列表时显示最新单词数
               await refreshBooks();
             } catch (e: any) {
-              Alert.alert('删除失败', e?.message || '请稍后重试');
+              webAlert('删除失败', e?.message || '请稍后重试');
             }
           },
         },
@@ -138,11 +139,11 @@ export default function WordbookDetailScreen() {
       (w) => !w.definitions || w.definitions.length === 0,
     );
     if (needEnrich.length === 0) {
-      Alert.alert('提示', '所有单词都已有释义，无需补全。');
+      webAlert('提示', '所有单词都已有释义，无需补全。');
       return;
     }
 
-    Alert.alert(
+    webAlert(
       '批量补全释义',
       `将为 ${needEnrich.length} 个缺少释义的单词查询词典。\n注意：免费 API 有限流，过程中可能有少量失败。`,
       [
@@ -177,7 +178,7 @@ export default function WordbookDetailScreen() {
             }
             setBatchRunning(false);
             if (!batchCancelRef.current) {
-              Alert.alert('完成', `已处理 ${done} 个单词的释义补全。`);
+              webAlert('完成', `已处理 ${done} 个单词的释义补全。`);
             }
           },
         },

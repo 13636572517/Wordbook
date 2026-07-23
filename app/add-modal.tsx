@@ -1,4 +1,5 @@
 import { useSession } from '@/components/SessionProvider';
+import { useWebAlert } from '@/components/WebAlert';
 import useColors from '@/components/useColors';
 import WordForm from '@/components/WordForm';
 import type { Word, WordDefinition, WordExample, WordPhrase } from '@/lib/data';
@@ -11,7 +12,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
@@ -33,6 +33,7 @@ export default function AddModal() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { wordbook } = useSession();
+  const webAlert = useWebAlert();
   const params = useLocalSearchParams<{ wordbookId?: string; name?: string }>();
   const wordbookId =
     typeof params.wordbookId === 'string' ? params.wordbookId : undefined;
@@ -81,13 +82,13 @@ export default function AddModal() {
   const handleSave = async () => {
     if (saving) return;
     if (!targetBookId) {
-      Alert.alert('无法保存', '未找到目标词本，请返回词本页重试。');
+      webAlert('无法保存', '未找到目标词本，请返回词本页重试。');
       return;
     }
     const trimmedWord = wordText.trim();
     const trimmedTranslation = translation.trim();
     if (!trimmedWord || !trimmedTranslation) {
-      Alert.alert('缺少字段', '请输入单词和释义。');
+      webAlert('缺少字段', '请输入单词和释义。');
       return;
     }
     const w: Word = {
@@ -109,14 +110,14 @@ export default function AddModal() {
       setWordText('');
       setTranslation('');
       setDictResult(null);
-      Alert.alert('已保存！', `“${trimmedWord}” 已添加到「${bookName || wordbook?.name}」`, [
+      webAlert('已保存！', `"${trimmedWord}" 已添加到「${bookName || wordbook?.name}」`, [
         { text: '继续添加', style: 'default' },
         { text: '完成', style: 'cancel', onPress: () => closeModal() },
       ]);
     } catch (e) {
       // 保存失败要明确提示，避免“点了没反应”的困惑（此前无 try/catch，错误被吞掉）
       const msg = e instanceof Error ? e.message : '网络错误，请重试';
-      Alert.alert('保存失败', msg);
+      webAlert('保存失败', msg);
     } finally {
       setSaving(false);
     }
