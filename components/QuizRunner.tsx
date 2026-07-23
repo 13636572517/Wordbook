@@ -426,6 +426,7 @@ function QuestionCard({
             placeholderTextColor={colors.subtitle}
             editable={!graded}
             autoCapitalize="none"
+            autoComplete="off"
             autoCorrect={false}
             autoFocus
             onSubmitEditing={submit}
