@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-07-22 晚间（Phase B 云端部署 + 数据修复 + 自定义词本删除 + PWA 图标修复 均已完成上线）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-07-23 深夜（学习环节闪卡循环修复 + 数据清理 + 部署阻塞问题）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -240,3 +240,70 @@ cd /opt/learning/backend && DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/b
 - **线上验证**：`/icons/icon-1024.png` → `200 image/png`（43094B）；`/icons/icon-180.png` → `200 image/png`（9181B）；`/manifest.json` → `200 application/json`（892B，此前为 `text/html`）。
 - **用户侧**：已加过旧图标的主屏入口需先删除 → 刷新页面 → 重新「添加到主屏幕」，iOS 才会重新抓取图标。
 - **注意**：PWA 资源走 Expo `public/` 机制；若日后换图标，改 `assets/images/icon.png` 后重新构建即可，`public/icons/` 由脚本生成（见仓库根 `icon-generate` 流程或手动 Pillow 脚本）。
+
+## 13. 功能修复（2026-07-23 深夜）：学习环节闪卡无限循环 + 数据清理 + 部署阻塞
+
+### 13.1 Bug 描述
+学员 zhangshanzhi（user_id=42）反馈：学习环节翻卡后不停加载同一个词，无法前进。后续其他学员也有同样问题。
+
+### 13.2 根因（两个 Bug）
+
+**Bug A — handleGrade 竞态（`app/(tabs)/index.tsx`）**
+`handleGrade` 调用 `loadNext()` 未 `await`，导致「选中下一词（读进度）」与 `reviewWord` 内部 `setProgress`（PUT 写进度落库）并发执行。`setProgress` 中 `invalidateProgressCache()` 在 `await api(PUT)` 之前调用 → 缓存先失效 → 并发的 `getProgressCache()` 重新拉取全量进度 → GET 在 PUT 落库前返回旧值 → 刚学过的词仍被当作新词（fresh[0]，字母序第一个未学词）选中 → 永远卡在同一词。
+
+**Bug B — 每日新词计数未去重（`lib/data/quiz.ts`）**
+`getTodayNewWordCount` 只数 `isNew` 日志条数，未按 `wordId` 去重。Bug A 循环期间同一词产生 N 条 `isNew` 日志 → `todayCount` 被高估 → 提前触发 `dailyNewWordGoal` 上限 → `allowNew=false` + 无到期复习词 → 返回 `null` → 显示"今日新词已学完"但实际大量词未学。
+
+### 13.3 已完成的修复（3 个文件）
+
+| 文件 | 改动 |
+|------|------|
+| `app/(tabs)/index.tsx:178` | `loadNext()` → `await loadNext()` |
+| `lib/data/httpRepo.ts:395` | `setProgress` 中 `invalidateProgressCache()` 移到 `await api(PUT)` 之后 |
+| `lib/data/quiz.ts:111` | `getTodayNewWordCount` 返回 `new Set(logs.map(l=>l.wordId)).size` 去重 |
+
+同时在 `index.tsx` 首行加了一个 `BUILD_MARKER` 注释（用于部署验证，可删除）。
+
+### 13.4 已完成的 Git 操作
+- 分支 `fix/study-loop-race` → 已合并到 `main`（commit `f7c3a45`）
+- 已 `git push origin main`（`102b86c..f7c3a45`）
+- 本地 main 工作区干净；服务器 `/opt/learning` 有 3 个文件的未提交修改（通过 SFTP 上传）
+
+### 13.5 已完成的数据库清理
+通过 SSH (paramiko, admin@learning.yusuan.xyz, MySQL learning 库)：
+- **zhangshanzhi (user_id=42)**：删除 2026-07-23 全部 study_logs（30条 → 0条）+ 关联的 7 个 word 的 progress
+- **admin (user_id=1)**：删除 2026-07-23 全部 study_logs（93条 → 0条）+ 关联的 23 个 word 的 progress
+- **firm (user 42)**：单独清理了 firm 的 3 条循环日志 + progress（residual from 旧代码）
+
+### 13.6 关键发现：服务器连接信息
+- SSH：`admin@learning.yusuan.xyz:22`，密码同服务器 sudo 密码
+- MySQL：`sudo mysql -u root learning`（本机可访问，公网 3306 被挡）
+- gesp_trainer 库中用户查 `auth_user` 表（`user_profile` 无 username 字段）
+- 仓库路径：`/opt/learning/`（**不是** `/opt/learning/wordhoard/`）
+- Node：v20.20.2，npm：10.8.2，已配置阿里镜像 `npmmirror.com`
+- npm 依赖已于 2026-07-23 首次安装到 `/opt/learning/node_modules`
+
+### 13.7 ⚠️ 未解决 — 部署阻塞问题
+
+**现象**：服务器源码已更新（MD5 确认），但 `expo export --platform web` 构建产物与旧版**字节级完全相同**（entry JS hash 始终为 `1493fc9766b64761acfdd64fed9ce6d4`）。即使：
+- 源码添加了 `BUILD_MARKER` 注释
+- 清除了 `.expo/`、`node_modules/.cache/`、`/tmp/metro-cache/`、`/home/admin/.expo/`
+- 使用 `--clear` 参数
+
+构建产物分析和线索：
+- entry JS 中搜索不到 `loadNext`、`handleGrade`、`BUILD_MARKER` 字符串
+- dist 只有两个 JS 文件：`entry-*.js`（4.12MB）和 `dictCache-*.js`（2.53MB）
+- 每个路由生成静态 HTML（~20.8kB），可能 JS 在 HTML 中内联
+- Nginx 对 `_expo/static/js/` 设了 `Cache-Control: public, immutable + expires 1y`
+- `package.json` 中有 `build:web:cloud` 脚本：`EXPO_PUBLIC_USE_CLOUD=true expo export --platform web && node scripts/pwa-postbuild.mjs`
+  — **此前未使用 `pwa-postbuild.mjs`**，可能缺少后处理步骤
+
+**建议排查方向**：
+1. 先跑完整的 `npm run build:web:cloud`（而非裸 `npx expo export`），看 `pwa-postbuild.mjs` 是否影响
+2. 检查静态 HTML 中是否内联了页面组件 JS（`dist/index.html` 可能内嵌 `index.tsx` 的编译代码）
+3. 尝试用 `npx expo start --web` 启动开发服务器验证修复生效，再处理生产构建问题
+4. 检查 Metro 是否有额外的系统级缓存（`/root/.cache`、systemd 临时目录等）
+
+### 13.8 临时脚本（本地，未提交）
+`scripts/` 下曾创建多个一次性探查/部署/清理脚本（`probe_*.py`、`cleanup_*.py`、`check_*.py`、`deploy_now.py`、`deploy.sh`、`compare_files.py` 等）。`deploy.sh` 已上传至服务器 `/opt/learning/`。本地尝试删除失败后手动清理。
+
