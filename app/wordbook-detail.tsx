@@ -51,9 +51,10 @@ export default function WordbookDetailScreen() {
 
   const loadWords = useCallback(async () => {
     if (!id) return;
-    // 云端模式：详情页需要完整释义数据；本地模式走 repo
+    // 云端：slim 列表（只含 word/translation/pronunciation），展开时再 enrich
+    // 本地模式走 repo 已自带全量数据
     const ws = USE_CLOUD
-      ? await (await import('@/lib/data/httpRepo')).fetchWordbookWordsFull(id)
+      ? await repo.getWordsByWordbook(id)
       : await repo.getWordsByWordbook(id);
     // Sort alphabetically
     ws.sort((a, b) => a.word.localeCompare(b.word));

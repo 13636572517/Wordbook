@@ -42,6 +42,8 @@ class WordbookViewSet(viewsets.ViewSet):
         user_id = request.user.id
         qs = Wordbook.objects.filter(
             Q(owner_id__isnull=True) | Q(owner_id=user_id)
+        ).annotate(
+            word_count=Count('word_links')
         ).order_by("type", "-created_at")
         serializer = WordbookSerializer(qs, many=True)
         return Response(serializer.data)

@@ -271,6 +271,8 @@ function QuestionCard({
     setGraded(true);
     await onGrade(ok, ans);
     setGrading(false);
+    // 答对自动跳转下一题，答错留给用户看完反馈
+    if (ok) setTimeout(() => onNext(), 700);
   };
 
   const submit = () => {
@@ -425,6 +427,7 @@ function QuestionCard({
             editable={!graded}
             autoCapitalize="none"
             autoCorrect={false}
+            autoFocus
             onSubmitEditing={submit}
           />
           {!graded && (

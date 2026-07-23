@@ -4,15 +4,12 @@ from .models import StudyLog, UserSettings, UserWordProgress, Word, Wordbook, Wo
 
 
 class WordbookSerializer(serializers.ModelSerializer):
-    word_count = serializers.SerializerMethodField()
+    word_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Wordbook
         fields = ["id", "owner_id", "name", "level", "type", "source", "created_at", "word_count"]
         read_only_fields = ["id", "created_at"]
-
-    def get_word_count(self, obj):
-        return obj.word_links.count()
 
 
 class WordSerializer(serializers.ModelSerializer):
