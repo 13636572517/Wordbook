@@ -110,8 +110,9 @@ export default function HomeScreen() {
       }
       const effectiveGoal = inExtra ? Number.POSITIVE_INFINITY : goal;
       const effectiveCount = inExtra ? 0 : todayCount;
+      // 加练模式只学新词，跳过复习词（学完后统一进入巩固测试）
       const [w, s] = await Promise.all([
-        getNextQuizWord(repo, user.id, wordbook.id, prio, now, effectiveGoal, effectiveCount),
+        getNextQuizWord(repo, user.id, wordbook.id, prio, now, effectiveGoal, effectiveCount, inExtra),
         repo.getWordbookStats(user.id, wordbook.id, now),
       ]);
       // 取当前词的已学习次数，用于「已掌握 x/3」展示
