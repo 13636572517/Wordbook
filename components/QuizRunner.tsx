@@ -1,4 +1,5 @@
 import { fetchSimilarWords, postStudyLogs, repo, httpRepo } from '@/lib/data';
+import { fetchWordDetail } from '@/lib/data/httpRepo';
 import { reviewWord } from '@/lib/data/review';
 import {
   genChoice,
@@ -20,6 +21,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -91,7 +93,22 @@ export default function QuizRunner({
         ['phrase', 'phrase-blank', 'sentence-choice'].includes(t),
       );
       let quizWords = words;
-      if (needsFullWord) {
+      if (needsFullWord && isCloud) {
+        // 云端模式：用 fetchWordDetail 获取完整数据（含 phrases/examples/definitions）
+        const enrichLimit = Math.min(words.length, 50);
+        const enriched = await Promise.all(
+          words.slice(0, enrichLimit).map(async (w) => {
+            try {
+              const full = await fetchWordDetail(w.id);
+              return full ? { ...w, ...full } : w;
+            } catch {
+              return w;
+            }
+          }),
+        );
+        quizWords = [...enriched, ...words.slice(enrichLimit)];
+      } else if (needsFullWord) {
+        // 本地模式：repo.getWord 已含完整数据
         const enrichLimit = Math.min(words.length, 50);
         const enriched = await Promise.all(
           words.slice(0, enrichLimit).map(async (w) => {
@@ -225,14 +242,24 @@ export default function QuizRunner({
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.progressRow}>
+        {onExit && (
+          <TouchableOpacity
+            style={styles.backBtnWrap}
+            onPress={() =>
+              Alert.alert('退出测试', '确定要退出本次测试吗？', [
+                { text: '取消', style: 'cancel' },
+                { text: '确定', onPress: () => onExit() },
+              ])
+            }
+            hitSlop={8}
+          >
+            <FontAwesome name="chevron-left" size={16} color={colors.tint} />
+            <Text style={[styles.backBtnText, { color: colors.tint }]}>返回</Text>
+          </TouchableOpacity>
+        )}
         <Text style={[styles.progressText, { color: colors.subtitle }]}>
           第 {idx + 1} / {questions.length} 题
         </Text>
-        {onExit && (
-          <TouchableOpacity onPress={() => onExit()} hitSlop={8}>
-            <FontAwesome name="times" size={18} color={colors.subtitle} />
-          </TouchableOpacity>
-        )}
       </View>
       <QuestionCard
         key={idx}
@@ -556,6 +583,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  backBtnWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   progressText: { fontSize: 14 },
   qCard: { flex: 1, marginTop: 4 },
