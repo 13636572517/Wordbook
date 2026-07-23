@@ -309,9 +309,10 @@ function QuestionCard({
   const [correct, setCorrect] = useState(false);
   const [grading, setGrading] = useState(false);
   const [hintUsed, setHintUsed] = useState(false);
+  const [hintDisplay, setHintDisplay] = useState(''); // 提示显示在题干区
   const inputRef = useRef<any>(null);
 
-  // 提示功能：填充 30% 的字母（随机位置）
+  // 提示功能：揭示 30% 的字母，显示在题干区（不填入输入框）
   const useHint = () => {
     if (graded || hintUsed) return;
     const answer = quiz.answer;
@@ -325,16 +326,15 @@ function QuestionCard({
     // 随机选取要揭示的位置
     const shuffled = positions.sort(() => Math.random() - 0.5);
     const toReveal = new Set(shuffled.slice(0, revealCount));
-    // 构建提示字符串：揭示的字母保留，其他用空格占位
+    // 构建提示字符串：揭示的字母保留，其他用 _ 占位
     let hint = '';
     for (let i = 0; i < answer.length; i++) {
       if (answer[i] === ' ') hint += ' ';
       else if (toReveal.has(i)) hint += answer[i];
-      else hint += ' ';
+      else hint += '_';
     }
-    setInput(hint.trim() === '' ? answer[0] : hint);
+    setHintDisplay(hint);
     setHintUsed(true);
-    inputRef.current?.focus();
   };
 
   const grade = async (ans: string) => {
@@ -373,7 +373,7 @@ function QuestionCard({
           <Text style={[styles.qPrompt, { color: colors.subtitle }]}>
             选择正确的释义
           </Text>
-          <Text style={[styles.qHeadline, styles.qHeadlineEn, { color: colors.text }]}>
+          <Text style={[styles.qHeadline, { color: colors.text }]}>
             {quiz.word.word}
           </Text>
           <View style={styles.optionsWrap}>
@@ -420,6 +420,11 @@ function QuestionCard({
           <Text style={[styles.phraseHint, { color: colors.pinyin }]}>
             {quiz.hints.map((h) => '_'.repeat(h)).join('   ')}
           </Text>
+          {hintDisplay ? (
+            <Text style={[styles.hintDisplay, { color: colors.tint }]}>
+              提示：{hintDisplay}
+            </Text>
+          ) : null}
         </>
       )}
       {quiz.type === 'phrase-blank' && (
@@ -433,6 +438,11 @@ function QuestionCard({
           <Text style={[styles.hintText, { color: colors.pinyin }]}>
             {quiz.meaning}（{quiz.hintLength}个字母）
           </Text>
+          {hintDisplay ? (
+            <Text style={[styles.hintDisplay, { color: colors.tint }]}>
+              提示：{hintDisplay}
+            </Text>
+          ) : null}
         </>
       )}
       {quiz.type === 'sentence-choice' && (
@@ -519,8 +529,8 @@ function QuestionCard({
               </TouchableOpacity>
             )}
           </View>
-          {/* 提示按钮：填充 30% 字母 */}
-          {!graded && (
+          {/* 提示按钮：仅词组默写/词组填空可用，提示显示在题干区 */}
+          {!graded && (quiz.type === 'phrase' || quiz.type === 'phrase-blank') && (
             <TouchableOpacity
               style={[styles.hintBtn, { borderColor: colors.border, opacity: hintUsed ? 0.4 : 1 }]}
               onPress={useHint}
@@ -667,9 +677,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 16,
   },
-  qHeadlineEn: {
-    textTransform: 'capitalize',
-  },
+
   optionsWrap: { gap: 10 },
   optionBtn: {
     borderRadius: 14,
@@ -687,6 +695,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 3,
     marginBottom: 16,
+    fontFamily: 'monospace',
+  },
+  hintDisplay: {
+    fontSize: 20,
+    fontWeight: '600',
+    letterSpacing: 2,
+    marginBottom: 12,
     fontFamily: 'monospace',
   },
   inputAreaWrap: { gap: 10 },

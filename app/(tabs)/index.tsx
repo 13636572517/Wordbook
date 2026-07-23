@@ -249,7 +249,7 @@ export default function HomeScreen() {
         },
       ],
     );
-  }, [loadNext]);
+  }, [loadNext, webAlert]);
 
   // 开始复习测试流程
   const startReview = useCallback(async () => {
