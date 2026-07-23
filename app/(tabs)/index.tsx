@@ -55,6 +55,8 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   // 当前词的已学习次数（repetitions），用于显示「已掌握 x/3」
   const [reps, setReps] = useState(0);
+  // 当前词是否为复习词（有历史进度），用于显示「复习」标识
+  const [isReview, setIsReview] = useState(false);
   const [cardKey, setCardKey] = useState(0);
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -93,6 +95,8 @@ export default function HomeScreen() {
       // 取当前词的已学习次数，用于「已掌握 x/3」展示
       const prog = w ? await repo.getProgress(user.id, wordbook.id, w.id) : null;
       setReps(prog?.repetitions ?? 0);
+      // 复习词判定：有进度且有正确/错误记录 → 之前学过
+      setIsReview(prog != null && (prog.correct + prog.wrong) > 0);
       clearPriorityIds();
       setWord(w);
       hasWordRef.current = w != null;
@@ -520,6 +524,11 @@ export default function HomeScreen() {
         </View>
       ) : !reviewPhase && word ? (
         <View style={styles.cardArea}>
+          {isReview && (
+            <View style={styles.reviewBadge}>
+              <Text style={styles.reviewBadgeText}>复习</Text>
+            </View>
+          )}
           <FlashCard
             key={cardKey}
             word={word}
@@ -784,6 +793,19 @@ const styles = StyleSheet.create({
   },
   reviewStartText: {
     fontSize: 17,
+    fontWeight: '700',
+  },
+  reviewBadge: {
+    alignSelf: 'center',
+    backgroundColor: '#F5A623',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginBottom: 8,
+  },
+  reviewBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '700',
   },
 });

@@ -50,3 +50,4 @@ server-credentials.json
 
 # dict cache progress (intermediate file)
 lib/data/dictCache.json
+scripts/__pycache__/
