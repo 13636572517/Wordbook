@@ -272,10 +272,22 @@ export default function HomeScreen() {
     });
     setReviewFlashIdx((idx) => {
       const limit = todayReviewWords.length;
+      if (!know) {
+        // 不认识：词移走后下一词滑入当前位置，不递增 idx
+        // 但仍需检查本遍是否结束（当前词是最后一个且被移走）
+        if (idx + 1 >= limit) {
+          if (reviewFlashPass + 1 >= 3) {
+            setReviewPhase('choice');
+            return 0;
+          }
+          setReviewFlashPass((p) => p + 1);
+          return 0;
+        }
+        return idx; // 保持不动，下一词已滑入
+      }
+      // 认识：正常前进
       if (idx + 1 >= limit) {
-        // 本遍结束
         if (reviewFlashPass + 1 >= 3) {
-          // 3遍完成，进入选择测试
           setReviewPhase('choice');
           return 0;
         }
@@ -470,7 +482,11 @@ export default function HomeScreen() {
             range="custom"
             types={['choice']}
             opts={{ wordIds: todayReviewWords.map((w) => w.id) }}
-            onExit={(correct, total) => onChoiceDone(correct ?? 0, total ?? 0)}
+            onExit={(correct, total) => {
+              // X 按钮无参数 → 退出复习；完成返回有分数 → 进入下一环节
+              if (correct === undefined) { exitReview(); return; }
+              onChoiceDone(correct, total ?? 0);
+            }}
           />
         </View>
       )}
@@ -481,7 +497,10 @@ export default function HomeScreen() {
             range="custom"
             types={['dictation']}
             opts={{ wordIds: todayReviewWords.map((w) => w.id) }}
-            onExit={(correct, total) => onDictDone(correct ?? 0, total ?? 0)}
+            onExit={(correct, total) => {
+              if (correct === undefined) { exitReview(); return; }
+              onDictDone(correct, total ?? 0);
+            }}
           />
         </View>
       )}

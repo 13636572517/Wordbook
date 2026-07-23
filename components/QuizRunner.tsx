@@ -265,6 +265,7 @@ function QuestionCard({
   const grade = async (ans: string) => {
     if (graded || grading) return;
     setGrading(true);
+    setInput(ans); // 记录用户选择，用于答错时高亮显示
     const ok =
       ans.trim().toLowerCase() === quiz.answer.trim().toLowerCase();
     setCorrect(ok);
@@ -280,7 +281,7 @@ function QuestionCard({
   };
 
   return (
-    <View style={styles.qCard}>
+    <ScrollView style={styles.qCard} contentContainerStyle={styles.qCardContent} keyboardShouldPersistTaps="handled">
       {/* 题干区：按题型展示 */}
       {quiz.type === 'dictation' && (
         <>
@@ -297,7 +298,7 @@ function QuestionCard({
           <Text style={[styles.qPrompt, { color: colors.subtitle }]}>
             选择正确的释义
           </Text>
-          <Text style={[styles.qHeadline, { color: colors.text }]}>
+          <Text style={[styles.qHeadline, styles.qHeadlineEn, { color: colors.text }]}>
             {quiz.word.word}
           </Text>
           <View style={styles.optionsWrap}>
@@ -364,7 +365,7 @@ function QuestionCard({
           <Text style={[styles.qPrompt, { color: colors.subtitle }]}>
             选择正确的单词填入例句
           </Text>
-          <Text style={[styles.qHeadline, { color: colors.text, fontSize: 20 }]}>
+          <Text style={[styles.qHeadline, styles.qHeadlineEn, { color: colors.text, fontSize: 20 }]}>
             {quiz.sentence}
           </Text>
           {quiz.sentenceZh ? (
@@ -473,7 +474,7 @@ function QuestionCard({
           </TouchableOpacity>
         </View>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -557,12 +558,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   progressText: { fontSize: 14 },
-  qCard: { marginTop: 4 },
+  qCard: { flex: 1, marginTop: 4 },
+  qCardContent: { paddingBottom: 40 },
   qPrompt: { fontSize: 14, marginBottom: 8 },
   qHeadline: {
     fontSize: 30,
     fontWeight: '800',
     marginBottom: 16,
+  },
+  qHeadlineEn: {
     textTransform: 'capitalize',
   },
   optionsWrap: { gap: 10 },
