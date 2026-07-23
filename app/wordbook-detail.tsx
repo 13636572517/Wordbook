@@ -3,7 +3,7 @@ import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
 import type { Word } from '@/lib/data';
 import { repo } from '@/lib/data';
-import { lookupWord } from '@/lib/dictionary';
+import { lookupWord, type DictionaryResult } from '@/lib/dictionary';
 import { getLanguageByCode } from '@/lib/languages';
 import { speakWord } from '@/lib/speech';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -51,10 +51,8 @@ export default function WordbookDetailScreen() {
 
   const loadWords = useCallback(async () => {
     if (!id) return;
-    // 云端模式：详情页需要完整释义数据
-    const ws = USE_CLOUD
-      ? await (await import('@/lib/data/httpRepo')).fetchWordbookWordsFull(id)
-      : await repo.getWordsByWordbook(id);
+    // slim 模式：列表只需 word + translation，展开时再按需 enrich
+    const ws = await repo.getWordsByWordbook(id);
     // Sort alphabetically
     ws.sort((a, b) => a.word.localeCompare(b.word));
     setWords(ws);
@@ -97,10 +95,26 @@ export default function WordbookDetailScreen() {
     );
   };
 
-  // Enrich a single word with dictionary data
+  // Enrich a single word: cloud用服务端已存释义，local用词典API
   const enrichWord = async (word: Word): Promise<boolean> => {
     setEnrichingId(word.id);
-    const result = await lookupWord(word.word);
+    let result: DictionaryResult | null = null;
+
+    if (USE_CLOUD) {
+      // 服务端已有批量补全的释义数据，直接拉取
+      try {
+        const full = await repo.getWord(word.id);
+        if (full && full.definitions && full.definitions.length > 0) {
+          const updated: Word = { ...word, ...full };
+          setWords((prev) => prev.map((w) => (w.id === word.id ? updated : w)));
+          setEnrichingId(null);
+          return true;
+        }
+      } catch { /* 失败回退到词典API */ }
+    }
+
+    // 回退：词典API查询
+    result = await lookupWord(word.word);
     setEnrichingId(null);
     if (!result) return false;
 
@@ -184,7 +198,15 @@ export default function WordbookDetailScreen() {
       <View style={[styles.wordCard, { backgroundColor: colors.card }]}>
         <TouchableOpacity
           style={styles.wordRow}
-          onPress={() => setExpandedId(isExpanded ? null : item.id)}
+          onPress={() => {
+            if (isExpanded) {
+              setExpandedId(null);
+            } else {
+              setExpandedId(item.id);
+              // 展开时自动按需拉取释义
+              if (!hasEnrich && !isEnriching) enrichWord(item);
+            }
+          }}
           activeOpacity={0.7}
         >
           <View style={styles.wordMain}>
