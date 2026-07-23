@@ -3,6 +3,7 @@ import type { Repository, CreateWordbookInput, ListStudyLogsOpts } from './repo'
 import type { ID, User, Wordbook, Word, UserWordProgress, WordbookWord, StudyLog } from './types';
 import { genId } from './types';
 import { getDailyNewWordGoal as localGetGoal, setDailyNewWordGoal as localSetGoal } from './settings';
+import { getWordbookStats as computeStats } from './stats';
 
 // Storage keys — aligned with the server `learning` schema tables.
 const K = {
@@ -161,6 +162,10 @@ class AsyncStorageRepo implements Repository {
       if (opts?.isNew !== undefined && (l.isNew === true) !== opts.isNew) return false;
       return true;
     });
+  }
+
+  async getWordbookStats(userId: ID, wordbookId: ID, now: number) {
+    return computeStats(this, userId, wordbookId, now);
   }
 
   async getDailyNewWordGoal(userId: ID): Promise<number> {

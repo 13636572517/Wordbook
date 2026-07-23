@@ -432,6 +432,20 @@ export const httpRepo: Repository = {
     }));
   },
 
+  // 词本级统计（服务端聚合，一次请求替代客户端 N+1 计算）
+  async getWordbookStats(userId: ID, wordbookId: ID, _now: number) {
+    const data = await api<any>(`/wordbooks/${toNum(wordbookId)}/stats/`);
+    return {
+      total: Number(data.total),
+      newCount: Number(data.newCount),
+      due: Number(data.due),
+      learning: Number(data.learning),
+      mastered: Number(data.mastered),
+      accuracy: Number(data.accuracy),
+      streak: Number(data.streak),
+    };
+  },
+
   // 每日新词上限（云端）：走 /settings/ 接口，按 user 隔离。
   async getDailyNewWordGoal(userId: ID): Promise<number> {
     const data = await api<any>('/settings/');

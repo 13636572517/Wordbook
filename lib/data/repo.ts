@@ -55,6 +55,9 @@ export interface Repository {
   getDailyNewWordGoal(userId: ID): Promise<number>;
   setDailyNewWordGoal(userId: ID, n: number): Promise<void>;
 
+  // stats (server-side aggregation to avoid N+1 client computation)
+  getWordbookStats(userId: ID, wordbookId: ID, now: number): Promise<import('./stats').WordbookStats>;
+
   // seed helpers (bulk writes for initial import performance)
   bulkUpsertWords(words: Word[]): Promise<void>;
   bulkSetMembership(wordbookId: ID, wordIds: ID[]): Promise<void>;

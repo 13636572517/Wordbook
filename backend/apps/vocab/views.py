@@ -273,6 +273,69 @@ class StatsView(APIView):
         })
 
 
+class WordbookStatsView(APIView):
+    """词本级学习统计（一次请求返回全部聚合数据，替代客户端 N+1 计算）。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        user_id = request.user.id
+        wordbook_id = pk
+        now_ms = int(time.time() * 1000)
+        day_ms = 86400 * 1000
+
+        # 词本总词数
+        total = WordbookWord.objects.filter(wordbook_id=wordbook_id).count()
+
+        # 用户对该词本的全部进度
+        progress_qs = UserWordProgress.objects.filter(
+            user_id=user_id, wordbook_id=wordbook_id
+        )
+        agg = progress_qs.aggregate(
+            total_correct=Sum("correct"),
+            total_wrong=Sum("wrong"),
+        )
+        correct = agg["total_correct"] or 0
+        wrong = agg["total_wrong"] or 0
+        accuracy = correct / (correct + wrong) if (correct + wrong) > 0 else 0
+
+        # 分类：due(到期)>0, learning(在学但未到期)>0, mastered(repetitions>=3)
+        due = progress_qs.filter(due__lte=now_ms, repetitions__lt=3).count()
+        mastered = progress_qs.filter(repetitions__gte=3).count()
+        progressed = progress_qs.count()
+        learning = max(0, progressed - due - mastered)
+        newCount = total - progressed
+
+        # streak 从 StudyLog 计算（progress 表无 last_review_ts 字段）
+        logs_qs = StudyLog.objects.filter(
+            user_id=user_id, wordbook_id=wordbook_id
+        )
+        streak = 0
+        check_day = now_ms - (now_ms % day_ms)  # 今天 0 点
+        while True:
+            day_start = check_day
+            day_end = check_day + day_ms
+            has_log = logs_qs.filter(ts__gte=day_start, ts__lt=day_end).exists()
+            if has_log:
+                streak += 1
+                check_day -= day_ms
+            else:
+                if check_day == now_ms - (now_ms % day_ms):
+                    check_day -= day_ms
+                    continue
+                break
+
+        return Response({
+            "total": total,
+            "newCount": newCount,
+            "due": due,
+            "learning": learning,
+            "mastered": mastered,
+            "accuracy": accuracy,
+            "streak": streak,
+        })
+
+
 class StudyLogView(APIView):
     """学习日志上报。"""
 

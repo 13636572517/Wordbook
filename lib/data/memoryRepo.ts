@@ -1,6 +1,7 @@
 import type { Repository, CreateWordbookInput, ListStudyLogsOpts } from './repo';
 import type { ID, User, Wordbook, Word, UserWordProgress, StudyLog } from './types';
 import { genId } from './types';
+import { getWordbookStats as computeStats } from './stats';
 
 const progressKey = (u: ID, wb: ID, w: ID) => `${u}|${wb}|${w}`;
 
@@ -109,6 +110,10 @@ class MemoryRepo implements Repository {
       if (opts?.isNew !== undefined && (l.isNew === true) !== opts.isNew) return false;
       return true;
     });
+  }
+
+  async getWordbookStats(userId: ID, wordbookId: ID, now: number) {
+    return computeStats(this, userId, wordbookId, now);
   }
 
   // 每日新词上限（测试用内存实现）

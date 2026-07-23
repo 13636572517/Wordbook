@@ -16,7 +16,7 @@ import type { Word } from '@/lib/data';
 import { getNextQuizWord, getTodayNewWordCount } from '@/lib/data/quiz';
 import { getDailyNewWordGoal } from '@/lib/data/settings';
 import { reviewWord } from '@/lib/data/review';
-import { getWordbookStats, type WordbookStats } from '@/lib/data/stats';
+import type { WordbookStats } from '@/lib/data/stats';
 import { Grade } from '@/lib/sm2';
 import { getPriorityIds, clearPriorityIds } from '@/lib/quizSelection';
 import { getLanguageByCode } from '@/lib/languages';
@@ -24,6 +24,7 @@ import { useSession } from '@/components/SessionProvider';
 import FlashCard from '@/components/FlashCard';
 import { speakWord } from '@/lib/speech';
 import { fetchWordDetail } from '@/lib/data/httpRepo';
+import QuizRunner from '@/components/QuizRunner';
 
 const ENGLISH = getLanguageByCode('en');
 // 云端模式判定改用运行时比较（repo===httpRepo），不再依赖编译期
@@ -36,6 +37,14 @@ const GRADES: { grade: Grade; label: string; cn: string; color: string }[] = [
   { grade: 2, label: 'Good', cn: '认识', color: '#30A46C' },
   { grade: 3, label: 'Easy', cn: '很熟', color: '#3B82F6' },
 ];
+
+type ReviewPhase =
+  | null
+  | 'fetching'   // 正在获取今日新词
+  | 'flashcards' // 闪卡滚3遍
+  | 'choice'     // 选择释义测验
+  | 'dictation'  // 默写测验
+  | 'done';      // 完成，显示结果
 
 export default function HomeScreen() {
   const [word, setWord] = useState<Word | null>(null);
@@ -53,6 +62,17 @@ export default function HomeScreen() {
   const activeWbRef = useRef<string | null>(null);
   const hasWordRef = useRef(false);
 
+  // 复习测试流程
+  const [reviewPhase, setReviewPhase] = useState<ReviewPhase>(null);
+  const [todayReviewWords, setTodayReviewWords] = useState<Word[]>([]);
+  const [reviewFlashIdx, setReviewFlashIdx] = useState(0);   // flashcard 当前索引
+  const [reviewFlashPass, setReviewFlashPass] = useState(0); // 当前第几遍 (0-2)
+  const [reviewFlipped, setReviewFlipped] = useState(false);
+  const [reviewChoiceScore, setReviewChoiceScore] = useState<{ correct: number; total: number } | null>(null);
+  const [reviewDictScore, setReviewDictScore] = useState<{ correct: number; total: number } | null>(null);
+  const todayCountRef = useRef(0);
+  const dailyGoalRef = useRef(0);
+
   const loadNext = useCallback(async () => {
     if (!user || !wordbook) return;
     setLoadError(null);
@@ -63,10 +83,12 @@ export default function HomeScreen() {
         getDailyNewWordGoal(user.id),
         getTodayNewWordCount(repo, user.id, wordbook.id, now),
       ]);
+      dailyGoalRef.current = goal;
+      todayCountRef.current = todayCount;
       const prio = getPriorityIds();
       const [w, s] = await Promise.all([
         getNextQuizWord(repo, user.id, wordbook.id, prio, now, goal, todayCount),
-        getWordbookStats(repo, user.id, wordbook.id, now),
+        repo.getWordbookStats(user.id, wordbook.id, now),
       ]);
       // 取当前词的已学习次数，用于「已掌握 x/3」展示
       const prog = w ? await repo.getProgress(user.id, wordbook.id, w.id) : null;
@@ -156,6 +178,92 @@ export default function HomeScreen() {
       loadNext();
     }
   };
+
+  // 获取今日新学单词的完整数据
+  const fetchTodayReviewWords = useCallback(async (): Promise<Word[]> => {
+    if (!user || !wordbook) return [];
+    const now = Date.now();
+    const logs = await repo.listStudyLogs(user.id, wordbook.id, {
+      sinceTs: (() => { const d = new Date(now); d.setHours(0, 0, 0, 0); return d.getTime(); })(),
+      isNew: true,
+    });
+    const wordIds = [...new Set(logs.map((l) => l.wordId))];
+    const words = await Promise.all(
+      wordIds.map(async (id) => {
+        const w = await repo.getWord(id);
+        return w;
+      }),
+    );
+    return words.filter((w): w is Word => w != null);
+  }, [user, wordbook]);
+
+  // 开始复习测试流程
+  const startReview = useCallback(async () => {
+    setReviewPhase('fetching');
+    const words = await fetchTodayReviewWords();
+    if (words.length === 0) {
+      setReviewPhase(null);
+      return;
+    }
+    setTodayReviewWords(words);
+    setReviewFlashIdx(0);
+    setReviewFlashPass(0);
+    setReviewFlipped(false);
+    setReviewChoiceScore(null);
+    setReviewDictScore(null);
+    setReviewPhase('flashcards');
+  }, [fetchTodayReviewWords]);
+
+  // 闪卡复习：翻面
+  const onReviewFlip = useCallback(() => {
+    setReviewFlipped((f) => !f);
+  }, []);
+
+  // 闪卡复习：认识(继续下一张) / 不认识(保留在队列末尾)
+  const onReviewKnow = useCallback((know: boolean) => {
+    setReviewFlipped(false);
+    setTodayReviewWords((words) => {
+      const w = words[reviewFlashIdx];
+      if (!know) {
+        // 不认识：移到末尾再滚一次
+        return [...words.slice(0, reviewFlashIdx), ...words.slice(reviewFlashIdx + 1), w];
+      }
+      return words;
+    });
+    setReviewFlashIdx((idx) => {
+      const limit = todayReviewWords.length;
+      if (idx + 1 >= limit) {
+        // 本遍结束
+        if (reviewFlashPass + 1 >= 3) {
+          // 3遍完成，进入选择测试
+          setReviewPhase('choice');
+          return 0;
+        }
+        setReviewFlashPass((p) => p + 1);
+        return 0;
+      }
+      return idx + 1;
+    });
+  }, [reviewFlashIdx, reviewFlashPass, todayReviewWords]);
+
+  // 选择测试完成
+  const onChoiceDone = useCallback((correct: number, total: number) => {
+    setReviewChoiceScore({ correct, total });
+    setReviewPhase('dictation');
+  }, []);
+
+  // 默写测试完成
+  const onDictDone = useCallback((correct: number, total: number) => {
+    setReviewDictScore({ correct, total });
+    setReviewPhase('done');
+  }, []);
+
+  // 退出复习（返回正常学习模式）
+  const exitReview = useCallback(() => {
+    setReviewPhase(null);
+    setTodayReviewWords([]);
+    loadNext();
+  }, [loadNext]);
 
   if (loadError) {
     return (
@@ -261,17 +369,153 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {!word ? (
+      {/* --- 复习测试流程 --- */}
+      {reviewPhase === 'flashcards' && todayReviewWords.length > 0 && (
+        <View style={styles.reviewArea}>
+          <View style={styles.reviewProgress}>
+            <Text style={[styles.reviewProgressText, { color: colors.subtitle }]}>
+              巩固复习 · 第 {reviewFlashPass + 1}/3 遍 · 第 {reviewFlashIdx + 1}/{todayReviewWords.length} 词
+            </Text>
+            <TouchableOpacity onPress={exitReview}>
+              <FontAwesome name="times" size={16} color={colors.subtitle} />
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={[styles.reviewCard, { backgroundColor: colors.card }]}
+            onPress={onReviewFlip}
+            activeOpacity={0.8}
+          >
+            {reviewFlipped ? (
+              <View style={styles.reviewCardBack}>
+                <Text style={[styles.reviewWord, { color: colors.text }]}>
+                  {todayReviewWords[reviewFlashIdx]?.word ?? ''}
+                </Text>
+                <Text style={[styles.reviewTrans, { color: colors.subtitle }]}>
+                  {todayReviewWords[reviewFlashIdx]?.translation ?? ''}
+                </Text>
+              </View>
+            ) : (
+              <Text style={[styles.reviewWord, { color: colors.text }]}>
+                {todayReviewWords[reviewFlashIdx]?.word ?? ''}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {reviewFlipped && (
+            <View style={styles.reviewButtons}>
+              <TouchableOpacity
+                style={[styles.reviewBtn, { backgroundColor: '#E5484D' }]}
+                onPress={() => onReviewKnow(false)}
+              >
+                <Text style={styles.reviewBtnText}>不认识</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reviewBtn, { backgroundColor: '#30A46C' }]}
+                onPress={() => onReviewKnow(true)}
+              >
+                <Text style={styles.reviewBtnText}>认识</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {!reviewFlipped && (
+            <Text style={[styles.hint, { color: colors.pinyin }]}>
+              点击卡片查看释义
+            </Text>
+          )}
+        </View>
+      )}
+
+      {reviewPhase === 'choice' && (
+        <View style={{ flex: 1 }}>
+          <QuizRunner
+            range="custom"
+            types={['choice']}
+            opts={{ wordIds: todayReviewWords.map((w) => w.id) }}
+            onExit={(correct, total) => onChoiceDone(correct ?? 0, total ?? 0)}
+          />
+        </View>
+      )}
+
+      {reviewPhase === 'dictation' && (
+        <View style={{ flex: 1 }}>
+          <QuizRunner
+            range="custom"
+            types={['dictation']}
+            opts={{ wordIds: todayReviewWords.map((w) => w.id) }}
+            onExit={(correct, total) => onDictDone(correct ?? 0, total ?? 0)}
+          />
+        </View>
+      )}
+
+      {reviewPhase === 'done' && (
         <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>🎉</Text>
+          <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>✅</Text>
           <Text style={[styles.emptyTitle, { color: colors.text }]}>
-            All caught up!
+            巩固完成！
           </Text>
-          <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
-            「{wordbook.name}」没有待复习的词了，明天再来看看～
+          {reviewChoiceScore && (
+            <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
+              选择释义：{reviewChoiceScore.correct}/{reviewChoiceScore.total}
+            </Text>
+          )}
+          {reviewDictScore && (
+            <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
+              默写：{reviewDictScore.correct}/{reviewDictScore.total}
+            </Text>
+          )}
+          <TouchableOpacity
+            style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]}
+            onPress={exitReview}
+          >
+            <Text style={[styles.reviewStartText, { color: '#0D0D0D' }]}>
+              返回学习
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {reviewPhase === 'fetching' && (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={colors.tint} />
+          <Text style={[styles.emptySubtitle, { color: colors.subtitle, marginTop: 16 }]}>
+            正在准备复习内容...
           </Text>
         </View>
-      ) : (
+      )}
+
+      {/* --- 正常学习模式 --- */}
+      {!reviewPhase && !word ? (
+        <View style={styles.emptyContainer}>
+          {todayCountRef.current >= dailyGoalRef.current && dailyGoalRef.current > 0 ? (
+            <>
+              <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>🎯</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                今日新词已学完
+              </Text>
+              <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
+                已完成 {dailyGoalRef.current} 个新词，来巩固一下吧！
+              </Text>
+              <TouchableOpacity
+                style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]}
+                onPress={startReview}
+              >
+                <Text style={[styles.reviewStartText, { color: '#0D0D0D' }]}>
+                  开始巩固测试
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>🎉</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                All caught up!
+              </Text>
+              <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
+                「{wordbook.name}」没有待复习的词了，明天再来看看～
+              </Text>
+            </>
+          )}
+        </View>
+      ) : !reviewPhase && word ? (
         <View style={styles.cardArea}>
           <FlashCard
             key={cardKey}
@@ -304,7 +548,7 @@ export default function HomeScreen() {
             </Text>
           )}
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -466,6 +710,76 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: '#0D0D0D',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  // --- 复习测试流程 ---
+  reviewArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 60,
+  },
+  reviewProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 4,
+    marginBottom: 24,
+  },
+  reviewProgressText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  reviewCard: {
+    width: '100%',
+    minHeight: 200,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  reviewCardBack: {
+    alignItems: 'center',
+  },
+  reviewWord: {
+    fontSize: 32,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+    textAlign: 'center',
+  },
+  reviewTrans: {
+    fontSize: 18,
+    marginTop: 16,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  reviewButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+    width: '100%',
+  },
+  reviewBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  reviewBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  reviewStartBtn: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    alignItems: 'center',
+  },
+  reviewStartText: {
     fontSize: 17,
     fontWeight: '700',
   },

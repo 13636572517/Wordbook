@@ -1,4 +1,4 @@
-import { fetchSimilarWords, postStudyLogs, repo } from '@/lib/data';
+import { fetchSimilarWords, postStudyLogs, repo, httpRepo } from '@/lib/data';
 import { reviewWord } from '@/lib/data/review';
 import {
   genChoice,
@@ -29,7 +29,7 @@ import {
 } from 'react-native';
 
 // 云端模式开关（与 lib/data/index.ts 保持一致）
-const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
+const isCloud = repo === httpRepo;
 
 type QuizType = 'dictation' | 'choice' | 'phrase' | 'phrase-blank' | 'sentence-choice';
 type Quiz = DictationQuiz | ChoiceQuiz | PhraseQuiz | PhraseBlankQuiz | SentenceChoiceQuiz;
@@ -45,7 +45,7 @@ interface QuizRunnerProps {
   range: RangeKind;
   opts?: { days?: number; wordIds?: string[] };
   types: QuizType[];
-  onExit?: () => void;
+  onExit?: (correct?: number, total?: number) => void;
 }
 
 // 本地打散（Fisher–Yates），避免依赖 quizgen 内部未导出函数
@@ -85,12 +85,33 @@ export default function QuizRunner({
         ...opts,
         now,
       });
+
+      // 词组/例句题型需要完整词数据（云端 slim 不含 phrases/examples）
+      const needsFullWord = types.some((t) =>
+        ['phrase', 'phrase-blank', 'sentence-choice'].includes(t),
+      );
+      let quizWords = words;
+      if (needsFullWord) {
+        const enrichLimit = Math.min(words.length, 50);
+        const enriched = await Promise.all(
+          words.slice(0, enrichLimit).map(async (w) => {
+            try {
+              const full = await repo.getWord(w.id);
+              return full ? { ...w, ...full } : w;
+            } catch {
+              return w;
+            }
+          }),
+        );
+        quizWords = [...enriched, ...words.slice(enrichLimit)];
+      }
+
       const pool: Quiz[] = [];
 
       // 例句选择题需要异步获取近义词（最多 10 个词）
       let similarMap: Map<string, string[]> = new Map();
       if (types.includes('sentence-choice')) {
-        const candidates = words.slice(0, 10);
+        const candidates = quizWords.slice(0, 10);
         const results = await Promise.allSettled(
           candidates.map((w) => fetchSimilarWords(w.word)),
         );
@@ -102,12 +123,12 @@ export default function QuizRunner({
         });
       }
 
-      for (const w of words) {
+      for (const w of quizWords) {
         for (const t of types) {
           if (t === 'dictation') {
             pool.push(genDictation([w]));
           } else if (t === 'choice') {
-            pool.push(genChoice(words, w));
+            pool.push(genChoice(quizWords, w));
           } else if (t === 'phrase') {
             const q = genPhrase(w);
             if (q) pool.push(q);
@@ -142,7 +163,7 @@ export default function QuizRunner({
     const grade = correct ? GRADE_RIGHT : GRADE_WRONG;
     const now = Date.now();
     await reviewWord(repo, user.id, wordbook.id, wordId, grade, now);
-    if (USE_CLOUD) {
+    if (isCloud) {
       await postStudyLogs([
         { wordbookId: wordbook.id, wordId, grade, ts: now, source: 'quiz' },
       ]);
@@ -188,7 +209,7 @@ export default function QuizRunner({
           该范围暂无单词
         </Text>
         {onExit && (
-          <TouchableOpacity style={styles.exitBtn} onPress={onExit}>
+          <TouchableOpacity style={styles.exitBtn} onPress={() => onExit()}>
             <Text style={styles.exitText}>返回</Text>
           </TouchableOpacity>
         )}
@@ -208,12 +229,13 @@ export default function QuizRunner({
           第 {idx + 1} / {questions.length} 题
         </Text>
         {onExit && (
-          <TouchableOpacity onPress={onExit} hitSlop={8}>
+          <TouchableOpacity onPress={() => onExit()} hitSlop={8}>
             <FontAwesome name="times" size={18} color={colors.subtitle} />
           </TouchableOpacity>
         )}
       </View>
       <QuestionCard
+        key={idx}
         quiz={q}
         onGrade={handleGrade}
         onNext={handleNext}
@@ -456,7 +478,7 @@ function DoneScreen({
   onExit,
 }: {
   results: ResultRow[];
-  onExit?: () => void;
+  onExit?: (correct?: number, total?: number) => void;
 }) {
   const colors = useColors();
   const total = results.length;
@@ -505,7 +527,7 @@ function DoneScreen({
       {onExit && (
         <TouchableOpacity
           style={[styles.exitBtn, { borderColor: colors.border }]}
-          onPress={onExit}
+          onPress={() => onExit(right, total)}
         >
           <Text style={[styles.exitText, { color: colors.text }]}>返回</Text>
         </TouchableOpacity>

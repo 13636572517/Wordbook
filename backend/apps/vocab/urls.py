@@ -9,6 +9,7 @@ urlpatterns = [
     path("wordbooks/", views.WordbookViewSet.as_view({"get": "list", "post": "create"})),
     path("wordbooks/<int:pk>/", views.WordbookViewSet.as_view({"delete": "destroy"})),
     path("wordbooks/<int:pk>/words/", views.WordbookViewSet.as_view({"get": "words", "post": "words", "delete": "words"})),
+    path("wordbooks/<int:pk>/stats/", views.WordbookStatsView.as_view(), name="wordbook-stats"),
     # 进度
     path("progress/", views.ProgressView.as_view()),
     path("progress/due/", views.DueWordsView.as_view()),
