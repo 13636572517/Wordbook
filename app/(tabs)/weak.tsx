@@ -136,7 +136,7 @@ export default function WeakScreen() {
                         <Text style={[styles.detailLabel, { color: colors.tint }]}>释义</Text>
                         {w.definitions.map((d: WordDefinition, i: number) => (
                           <Text key={i} style={[styles.detailText, { color: colors.text }]}>
-                            <Text style={{ fontWeight: '600' }}>{d.pos} </Text>
+                            <Text style={{ fontWeight: '600' }}>{d.pos.toLowerCase()}. </Text>
                             {d.definition}
                           </Text>
                         ))}

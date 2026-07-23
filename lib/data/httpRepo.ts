@@ -170,24 +170,23 @@ function sanitizeDefinitions(raw: any): WordDefinition[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
-/** 归一化词性：Free Dictionary 全称 -> 缩写(小写)，有道已是缩写不变 */
+/** 归一化词性：Free Dictionary 全称 -> 缩写(小写无点)，有道已是缩写不变 */
 function normalizePos(pos: string): string {
   if (!pos) return '释义';
-  const lower = pos.toLowerCase();
+  const lower = pos.toLowerCase().replace(/\.$/, '');
   const map: Record<string, string> = {
-    noun: 'n.', adjective: 'adj.', verb: 'v.', adverb: 'adv.',
-    preposition: 'prep.', conjunction: 'conj.', interjection: 'interj.',
-    pronoun: 'pron.', abbreviation: 'abbr.', article: 'art.',
-    determiner: 'det.', numeral: 'num.', auxiliary: 'aux.',
-    'auxiliary verb': 'aux.', 'modal verb': 'aux.',
-    prefix: 'pref.', suffix: 'suff.', symbol: 'sym.',
-    'proper noun': 'n.', 'phrasal verb': 'phr. v.',
-    idiom: 'idiom', exclamation: 'interj.',
+    noun: 'n', adjective: 'adj', verb: 'v', adverb: 'adv',
+    preposition: 'prep', conjunction: 'conj', interjection: 'interj',
+    pronoun: 'pron', abbreviation: 'abbr', article: 'art',
+    determiner: 'det', numeral: 'num', auxiliary: 'aux',
+    'auxiliary verb': 'aux', 'modal verb': 'aux',
+    prefix: 'pref', suffix: 'suff', symbol: 'sym',
+    'proper noun': 'n', 'phrasal verb': 'phr v',
+    idiom: 'idiom', exclamation: 'interj',
   };
   if (map[lower]) return map[lower];
-  // 已经缩写的保持原样（有道格式：n/adj/v/adv 等）
-  if (/^[a-z]+\.?$/.test(lower)) return lower.replace(/\.$/, '') + '.';
-  return lower; // 无法识别则保留原文
+  if (/^[a-z]+$/.test(lower)) return lower;
+  return lower;
 }
 
 function sanitizePhrases(raw: any): WordPhrase[] | undefined {

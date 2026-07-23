@@ -20,6 +20,24 @@ const DICT_PROXY = __DEV__
   ? 'http://localhost:8000/api/dict/'
   : 'https://learning.yusuan.xyz/api/dict/';
 
+/** 归一化词性：全称->缩写(小写无点)，如 noun->n, adjective->adj */
+function normalizePos(pos: string): string {
+  if (!pos) return '释义';
+  const lower = pos.toLowerCase().replace(/\.$/, '');
+  const map: Record<string, string> = {
+    noun: 'n', adjective: 'adj', verb: 'v', adverb: 'adv',
+    preposition: 'prep', conjunction: 'conj', interjection: 'interj',
+    pronoun: 'pron', abbreviation: 'abbr', article: 'art',
+    determiner: 'det', numeral: 'num', auxiliary: 'aux',
+    prefix: 'pref', suffix: 'suff', symbol: 'sym',
+    'proper noun': 'n', 'phrasal verb': 'phr v',
+    idiom: 'idiom', exclamation: 'interj',
+  };
+  if (map[lower]) return map[lower];
+  if (/^[a-z]+$/.test(lower)) return lower;
+  return pos;
+}
+
 // --- Offline cache (lazy-loaded) ---
 let offlineCache: Record<string, DictionaryResult> | null = null;
 
@@ -164,7 +182,8 @@ function parseYoudao(data: YoudaoResponse): DictionaryResult | null {
 
     // Parse all definitions (一词多义)
     for (const tr of ecTrs) {
-      const pos = tr.pos?.replace(/\./g, '').trim() ?? '';
+      const rawPos = tr.pos?.replace(/\./g, '').trim() ?? '';
+      const pos = normalizePos(rawPos);
       // Collect all translations for this entry
       const meanings: string[] = [];
       if (tr.tran) {

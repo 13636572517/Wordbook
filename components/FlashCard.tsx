@@ -122,7 +122,7 @@ export default function FlashCard({ word, language, onFlip }: Props) {
                 {word.definitions.map((d, i) => (
                   <View key={i} style={styles.defRow}>
                     <Text style={[styles.defPos, { color: colors.pinyin }]}>
-                      {d.pos}.
+                      {d.pos.toLowerCase()}.
                     </Text>
                     <Text style={[styles.defText, { color: colors.subtitle }]}>
                       {d.definition}
