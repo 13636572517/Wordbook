@@ -18,10 +18,9 @@ import {
 import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -239,18 +238,14 @@ export default function QuizRunner({
   }
 
   const q = questions[idx];
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.progressRow}>
         {onExit && (
           <TouchableOpacity
             style={styles.backBtnWrap}
-            onPress={() =>
-              Alert.alert('退出测试', '确定要退出本次测试吗？', [
-                { text: '取消', style: 'cancel' },
-                { text: '确定', onPress: () => onExit() },
-              ])
-            }
+            onPress={() => setShowExitConfirm(true)}
             hitSlop={8}
           >
             <FontAwesome name="chevron-left" size={16} color={colors.tint} />
@@ -268,6 +263,31 @@ export default function QuizRunner({
         onNext={handleNext}
         isLast={idx + 1 >= questions.length}
       />
+      {/* 退出确认浮层（替代 Alert.alert，Web/PWA 兼容） */}
+      {showExitConfirm && (
+        <View style={styles.exitOverlay}>
+          <View style={[styles.exitDialog, { backgroundColor: colors.card }]}>
+            <Text style={[styles.exitTitle, { color: colors.text }]}>退出测试</Text>
+            <Text style={[styles.exitMsg, { color: colors.subtitle }]}>
+              确定要退出本次测试吗？
+            </Text>
+            <View style={styles.exitActions}>
+              <TouchableOpacity
+                style={[styles.exitCancelBtn, { borderColor: colors.border }]}
+                onPress={() => setShowExitConfirm(false)}
+              >
+                <Text style={[styles.exitCancelText, { color: colors.text }]}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.exitConfirmBtn, { backgroundColor: '#E5484D' }]}
+                onPress={() => onExit?.()}
+              >
+                <Text style={styles.exitConfirmText}>确定退出</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -288,6 +308,34 @@ function QuestionCard({
   const [graded, setGraded] = useState(false);
   const [correct, setCorrect] = useState(false);
   const [grading, setGrading] = useState(false);
+  const [hintUsed, setHintUsed] = useState(false);
+  const inputRef = useRef<any>(null);
+
+  // 提示功能：填充 30% 的字母（随机位置）
+  const useHint = () => {
+    if (graded || hintUsed) return;
+    const answer = quiz.answer;
+    const totalChars = answer.replace(/\s/g, '').length;
+    const revealCount = Math.max(1, Math.ceil(totalChars * 0.3));
+    // 获取非空格位置索引
+    const positions: number[] = [];
+    for (let i = 0; i < answer.length; i++) {
+      if (answer[i] !== ' ') positions.push(i);
+    }
+    // 随机选取要揭示的位置
+    const shuffled = positions.sort(() => Math.random() - 0.5);
+    const toReveal = new Set(shuffled.slice(0, revealCount));
+    // 构建提示字符串：揭示的字母保留，其他用空格占位
+    let hint = '';
+    for (let i = 0; i < answer.length; i++) {
+      if (answer[i] === ' ') hint += ' ';
+      else if (toReveal.has(i)) hint += answer[i];
+      else hint += ' ';
+    }
+    setInput(hint.trim() === '' ? answer[0] : hint);
+    setHintUsed(true);
+    inputRef.current?.focus();
+  };
 
   const grade = async (ans: string) => {
     if (graded || grading) return;
@@ -369,8 +417,8 @@ function QuestionCard({
           <Text style={[styles.qHeadline, { color: colors.text }]}>
             {quiz.meaning}
           </Text>
-          <Text style={[styles.hintText, { color: colors.pinyin }]}>
-            {quiz.hints.map((h) => '_ '.repeat(h).trim()).join('    ')}
+          <Text style={[styles.phraseHint, { color: colors.pinyin }]}>
+            {quiz.hints.map((h) => '_'.repeat(h)).join('   ')}
           </Text>
         </>
       )}
@@ -392,7 +440,7 @@ function QuestionCard({
           <Text style={[styles.qPrompt, { color: colors.subtitle }]}>
             选择正确的单词填入例句
           </Text>
-          <Text style={[styles.qHeadline, styles.qHeadlineEn, { color: colors.text, fontSize: 20 }]}>
+          <Text style={[styles.qHeadline, { color: colors.text, fontSize: 20 }]}>
             {quiz.sentence}
           </Text>
           {quiz.sentenceZh ? (
@@ -436,36 +484,53 @@ function QuestionCard({
 
       {/* 输入区（dictation / phrase / phrase-blank） */}
       {quiz.type !== 'choice' && quiz.type !== 'sentence-choice' && (
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: colors.inputBackground,
-                borderColor: colors.border,
-                color: colors.text,
-              },
-            ]}
-            value={input}
-            onChangeText={(t) => {
-              if (!graded) setInput(t);
-            }}
-            placeholder="输入答案"
-            placeholderTextColor={colors.subtitle}
-            editable={!graded}
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect={false}
-            autoFocus
-            onSubmitEditing={submit}
-          />
+        <View style={styles.inputAreaWrap}>
+          <View style={styles.inputWrap}>
+            <TextInput
+              ref={inputRef}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.inputBackground,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
+              value={input}
+              onChangeText={(t) => {
+                if (!graded) setInput(t);
+              }}
+              placeholder="输入答案"
+              placeholderTextColor={colors.subtitle}
+              editable={!graded}
+              autoCapitalize="none"
+              autoComplete="off"
+              autoCorrect={false}
+              autoFocus
+              onSubmitEditing={submit}
+            />
+            {!graded && (
+              <TouchableOpacity
+                style={[styles.submitBtn, { backgroundColor: colors.tint }]}
+                onPress={submit}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.submitText}>检查</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {/* 提示按钮：填充 30% 字母 */}
           {!graded && (
             <TouchableOpacity
-              style={[styles.submitBtn, { backgroundColor: colors.tint }]}
-              onPress={submit}
-              activeOpacity={0.8}
+              style={[styles.hintBtn, { borderColor: colors.border, opacity: hintUsed ? 0.4 : 1 }]}
+              onPress={useHint}
+              disabled={hintUsed}
+              activeOpacity={0.7}
             >
-              <Text style={styles.submitText}>检查</Text>
+              <FontAwesome name="lightbulb-o" size={14} color={colors.tint} />
+              <Text style={[styles.hintBtnText, { color: colors.tint }]}>
+                {hintUsed ? '已使用提示' : '提示（填30%字母）'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -617,6 +682,14 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: 16,
   },
+  phraseHint: {
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: 3,
+    marginBottom: 16,
+    fontFamily: 'monospace',
+  },
+  inputAreaWrap: { gap: 10 },
   inputWrap: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   input: {
     flex: 1,
@@ -680,4 +753,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   exitText: { fontSize: 16, fontWeight: '600' },
+  hintBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  hintBtnText: { fontSize: 13, fontWeight: '600' },
+  exitOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  exitDialog: {
+    borderRadius: 20,
+    padding: 24,
+    width: '80%',
+    maxWidth: 320,
+    alignItems: 'center',
+  },
+  exitTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  exitMsg: { fontSize: 15, marginBottom: 20, textAlign: 'center' },
+  exitActions: { flexDirection: 'row', gap: 12, width: '100%' },
+  exitCancelBtn: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  exitCancelText: { fontSize: 15, fontWeight: '600' },
+  exitConfirmBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  exitConfirmText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });

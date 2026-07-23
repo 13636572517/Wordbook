@@ -111,7 +111,8 @@ export function genPhraseBlank(word: Word): PhraseBlankQuiz | null {
     // 用单词边界匹配（避免 "ice" 匹配到 "notice" 中的子串）
     const regex = new RegExp(`\\b${escapeRegex(target)}\\b`, 'i');
     if (regex.test(phraseLower)) {
-      const blanked = p.phrase.replace(regex, '___');
+      // 用与答案等长的下划线替换，让用户直观看到需要填多少字母
+      const blanked = p.phrase.replace(regex, '_'.repeat(target.length));
       return {
         type: 'phrase-blank',
         word,
