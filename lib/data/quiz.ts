@@ -112,5 +112,8 @@ export async function getTodayNewWordCount(
     sinceTs: startOfDayTs(now),
     isNew: true,
   });
-  return logs.length;
+  // 按 wordId 去重：同一词多次 isNew 日志（如循环评分产生）不应重复计入，
+  // 否则计数虚高导致 newWordGoal 提前关闭，用户无新词可学。
+  const uniqueWordIds = new Set(logs.map((l) => l.wordId));
+  return uniqueWordIds.size;
 }

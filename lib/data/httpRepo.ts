@@ -393,7 +393,8 @@ export const httpRepo: Repository = {
   },
 
   async setProgress(p: UserWordProgress): Promise<void> {
-    invalidateProgressCache();
+    // 先写库，落库成功后再失效缓存：避免缓存失效后、写库完成前并发发起的
+    // 进度 GET 读到旧值（会导致刚学过的词被重新当作新词选中而卡住循环）。
     await api('/progress/', {
       method: 'PUT',
       body: JSON.stringify({
@@ -409,6 +410,7 @@ export const httpRepo: Repository = {
         }],
       }),
     });
+    invalidateProgressCache();
   },
 
   // ===== Bulk helpers =====

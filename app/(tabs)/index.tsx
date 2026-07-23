@@ -175,7 +175,10 @@ export default function HomeScreen() {
           isNew,
         });
       }
-      loadNext();
+      // 必须 await：确保下一词选词（读取进度）发生在 setProgress 的 PUT
+      // 落库完成之后，否则进度缓存会读到旧值，刚学过的词仍被当作新词
+      // 重新选中，导致卡在单个词无限循环。
+      await loadNext();
     }
   };
 
