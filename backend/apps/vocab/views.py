@@ -9,6 +9,7 @@ import time
 import urllib.parse
 import urllib.request
 
+from django.db import connection
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.utils import timezone
@@ -18,7 +19,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .admin_check import is_admin_user
+from .admin_check import is_admin_user, is_teacher_or_admin
 from .models import StudyLog, UserSettings, UserWordProgress, Word, Wordbook, WordbookWord
 from .serializers import (
     ProgressUpdateItem,
@@ -518,7 +519,284 @@ class MeView(APIView):
         return Response({
             "user_id": user_id,
             "is_admin": is_admin_user(user_id),
+            "is_teacher": is_teacher_or_admin(user_id),
         })
+
+
+# ── 教师/管理员 学员统计 API ─────────────────────────────────────────────
+
+
+class TeacherStudentListView(APIView):
+    """学员列表（仅教师/管理员）。支持 ?q= 模糊搜索姓名或手机号。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        teacher_id = request.user.id
+        if not is_teacher_or_admin(teacher_id):
+            return Response({"error": "仅教师/管理员可查看"}, status=403)
+
+        q = (request.query_params.get("q") or "").strip()
+        like_q = f"%{q}%" if q else None
+
+        with connection.cursor() as cursor:
+            if like_q:
+                cursor.execute(
+                    """
+                    SELECT
+                        sl.user_id, up.nickname, up.phone, up.avatar,
+                        COUNT(DISTINCT sl.word_id) as word_count,
+                        COUNT(DISTINCT DATE_FORMAT(FROM_UNIXTIME(sl.ts / 1000), '%%Y-%%m-%%d'))
+                            as studied_days,
+                        MAX(sl.ts) as last_ts
+                    FROM study_logs sl
+                    JOIN gesp_trainer.user_profile up ON up.user_id = sl.user_id
+                    WHERE up.nickname LIKE %s OR up.phone LIKE %s
+                    GROUP BY sl.user_id, up.nickname, up.phone, up.avatar
+                    ORDER BY up.nickname
+                    """,
+                    [like_q, like_q],
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT
+                        sl.user_id, up.nickname, up.phone, up.avatar,
+                        COUNT(DISTINCT sl.word_id) as word_count,
+                        COUNT(DISTINCT DATE_FORMAT(FROM_UNIXTIME(sl.ts / 1000), '%%Y-%%m-%%d'))
+                            as studied_days,
+                        MAX(sl.ts) as last_ts
+                    FROM study_logs sl
+                    JOIN gesp_trainer.user_profile up ON up.user_id = sl.user_id
+                    GROUP BY sl.user_id, up.nickname, up.phone, up.avatar
+                    ORDER BY up.nickname
+                    """
+                )
+            rows = cursor.fetchall()
+
+        # 最近 7 天活跃天数
+        now_ms = int(time.time() * 1000)
+        since_ms = now_ms - 7 * 86400_000
+        user_ids = [r[0] for r in rows]
+        recent_days: dict = {}
+        if user_ids:
+            ph = ",".join(["%s"] * len(user_ids))
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT user_id,
+                        COUNT(DISTINCT DATE_FORMAT(FROM_UNIXTIME(ts / 1000), '%%Y-%%m-%%d'))
+                    FROM study_logs
+                    WHERE user_id IN ({ph}) AND ts >= %s
+                    GROUP BY user_id
+                    """,
+                    [*user_ids, since_ms],
+                )
+                recent_days = dict(cursor.fetchall())
+
+        result = []
+        for row in rows:
+            uid = row[0]
+            phone = row[2] or ""
+            masked = (phone[:3] + "****" + phone[-4:]) if len(phone) >= 7 else phone
+            result.append({
+                "user_id": uid,
+                "nickname": row[1] or f"学员{uid}",
+                "phone": masked,
+                "avatar": row[3] or "",
+                "word_count": row[4],
+                "studied_days": row[5],
+                "recent_days": recent_days.get(uid, 0),
+                "last_active": row[6],
+            })
+
+        return Response(result)
+
+
+class TeacherStudentDailyView(APIView):
+    """学员每日学习进度与正确率（仅教师/管理员）。
+
+    GET /teacher/students/<user_id>/daily/?wordbook_id=&from_ts=&to_ts=
+    返回: [{date, total, new_count, correct_rate}] 按天排列。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id: int):
+        teacher_id = request.user.id
+        if not is_teacher_or_admin(teacher_id):
+            return Response({"error": "仅教师/管理员可查看"}, status=403)
+
+        wb_id = request.query_params.get("wordbook_id")
+        from_ts = request.query_params.get("from_ts")
+        to_ts = request.query_params.get("to_ts")
+
+        clause = "WHERE sl.user_id = %s"
+        params: list = [user_id]
+        if wb_id:
+            clause += " AND sl.wordbook_id = %s"
+            params.append(int(wb_id))
+        if from_ts:
+            clause += " AND sl.ts >= %s"
+            params.append(int(from_ts))
+        if to_ts:
+            clause += " AND sl.ts < %s"
+            params.append(int(to_ts))
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    DATE_FORMAT(FROM_UNIXTIME(sl.ts / 1000), '%%Y-%%m-%%d') as date,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN sl.is_new THEN 1 ELSE 0 END) as new_count,
+                    SUM(CASE WHEN sl.grade >= 3 THEN 1 ELSE 0 END) as correct_count
+                FROM study_logs sl
+                {clause}
+                GROUP BY date
+                ORDER BY date
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+
+        result = []
+        for row in rows:
+            total = row[1] or 0
+            correct = row[3] or 0
+            result.append({
+                "date": row[0],
+                "total": total,
+                "new_count": row[2] or 0,
+                "correct_rate": round(correct / total, 3) if total > 0 else 0,
+            })
+
+        return Response(result)
+
+
+class TeacherStudentWeakWordsView(APIView):
+    """学员未掌握单词清单（仅教师/管理员）。
+
+    判定：错率≥0.34 或 EF<1.8，且未达到「已掌握」门槛
+    （repetitions≥2 且 EF≥2.5 且 interval≥21）。
+    GET /teacher/students/<user_id>/weak-words/?wordbook_id=
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id: int):
+        teacher_id = request.user.id
+        if not is_teacher_or_admin(teacher_id):
+            return Response({"error": "仅教师/管理员可查看"}, status=403)
+
+        wb_id = request.query_params.get("wordbook_id")
+
+        qs = UserWordProgress.objects.filter(user_id=user_id)
+        if wb_id:
+            qs = qs.filter(wordbook_id=int(wb_id))
+        qs = qs.select_related("word").order_by("-repetitions")
+
+        result = []
+        for p in qs:
+            total = p.correct + p.wrong
+            error_rate = round(p.wrong / total, 3) if total > 0 else 0
+            is_weak = (total > 0 and error_rate >= 0.34) or p.ef < 1.8
+            is_mastered = p.repetitions >= 2 and p.ef >= 2.5 and p.interval >= 21
+            if is_weak and not is_mastered:
+                result.append({
+                    "word_id": p.word_id,
+                    "word": p.word.word,
+                    "translation": p.word.translation,
+                    "ef": round(p.ef, 2),
+                    "correct": p.correct,
+                    "wrong": p.wrong,
+                    "error_rate": error_rate,
+                    "repetitions": p.repetitions,
+                    "interval": p.interval,
+                    "due": p.due,
+                })
+
+        return Response(result)
+
+
+class TeacherStudentWrongLogsView(APIView):
+    """学员练习错题清单（仅教师/管理员）。
+
+    错题 = study_logs 中 grade<3（Again=0 / Hard=1）的记录，
+    按单词聚合错误次数与最近错误时间。
+    GET /teacher/students/<user_id>/wrong-logs/?wordbook_id=&limit=50&offset=0
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id: int):
+        teacher_id = request.user.id
+        if not is_teacher_or_admin(teacher_id):
+            return Response({"error": "仅教师/管理员可查看"}, status=403)
+
+        wb_id = request.query_params.get("wordbook_id")
+        try:
+            limit = int(request.query_params.get("limit", 50))
+            offset = int(request.query_params.get("offset", 0))
+        except (TypeError, ValueError):
+            return Response({"error": "limit/offset 必须为整数"}, status=400)
+        limit = max(1, min(limit, 200))
+
+        clause = "WHERE sl.user_id = %s AND sl.grade < 3"
+        params: list = [user_id]
+        if wb_id:
+            clause += " AND sl.wordbook_id = %s"
+            params.append(int(wb_id))
+
+        # 先查总数
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT COUNT(DISTINCT sl.word_id)
+                FROM study_logs sl
+                {clause}
+                """,
+                params,
+            )
+            total = cursor.fetchone()[0] or 0
+
+        # 分页查 word 聚合
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    sl.word_id,
+                    w.word,
+                    w.translation,
+                    COUNT(*) as wrong_count,
+                    MAX(sl.ts) as last_ts,
+                    GROUP_CONCAT(DISTINCT sl.source ORDER BY sl.source SEPARATOR ',') as sources
+                FROM study_logs sl
+                JOIN words w ON w.id = sl.word_id
+                {clause}
+                GROUP BY sl.word_id, w.word, w.translation
+                ORDER BY wrong_count DESC, last_ts DESC
+                LIMIT %s OFFSET %s
+                """,
+                [*params, limit, offset],
+            )
+            rows = cursor.fetchall()
+
+        result = []
+        for row in rows:
+            result.append({
+                "word_id": row[0],
+                "word": row[1],
+                "translation": row[2],
+                "wrong_count": row[3],
+                "last_wrong_ts": row[4],
+                "sources": (row[5] or ""),
+            })
+
+        return Response({"total": total, "items": result})
+
+
+# ── 管理员工具 ───────────────────────────────────────────────────────────
 
 
 class EnrichView(APIView):

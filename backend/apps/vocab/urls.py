@@ -31,4 +31,9 @@ urlpatterns = [
     # 一键补全释义（管理员）
     path("enrich/", views.EnrichView.as_view()),
     path("enrich/stop/", views.EnrichStopView.as_view()),
+    # 教师/管理员 学员统计
+    path("teacher/students/", views.TeacherStudentListView.as_view()),
+    path("teacher/students/<int:user_id>/daily/", views.TeacherStudentDailyView.as_view()),
+    path("teacher/students/<int:user_id>/weak-words/", views.TeacherStudentWeakWordsView.as_view()),
+    path("teacher/students/<int:user_id>/wrong-logs/", views.TeacherStudentWrongLogsView.as_view()),
 ]
