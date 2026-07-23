@@ -25,6 +25,7 @@
 
 ### 最近提交（main，新→旧）
 ```
+d42027a feat: 加练模式只学新词，跳过复习词
 4395cf7 fix: 练习模块5项UX修复（提示位置/默写无提示/选择无大写/加练弹窗）
 be59c66 fix: 全局Alert.alert替换为Web兼容浮层(WebAlertProvider)
 d9dbe8f fix: 修复QuizRunner hooks顺序违规(React error 310)
@@ -383,4 +384,21 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 
 - QuizRunner.tsx 变量遮蔽：`const results = await Promise.allSettled(...)` 遮蔽组件 state `results` → 重命名为 `settled`
 - 全页面滚动审查：审查所有 15 个 .tsx 页面，仅 stats.tsx 有问题（已修复），其余均正确使用 ScrollView/FlatList
+
+### 14.6 加练模式只学新词（分支 `feature/extra-new-only`）
+
+**需求**：加练的 10 个单词不要再复习，直接进入新单词，但后续逻辑和每日学习一样（学完后可进入巩固测试）。
+
+**实现**：
+- `lib/quizSelection.ts`：`selectQuizWord` 新增 `newOnly` 参数，为 `true` 时跳过 priority/due 分支，只从 fresh（从未学过）中按字母序选取
+- `lib/data/quiz.ts`：`selectQuizWordForWordbook` / `getNextQuizWord` 透传 `newOnly`
+- `app/(tabs)/index.tsx`：`loadNext` 中加练模式（`inExtra=true`）传入 `newOnly=true`
+
+**加练流程（改后）**：
+1. 点击「继续学习新词（+10）」→ 确认弹窗
+2. 直接进入 10 个纯新词学习（不穿插复习词）
+3. 每学完一个 → 闪卡 + 评分（与每日学习一致）
+4. 10 个学完 → 回到“今日已学完”页面 → 可点「开始巩固测试」进入复习流程
+
+巩固测试自动包含加练中学的新词（通过 `study_logs` 的 `isNew=true` 记录查询）。
 
