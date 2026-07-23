@@ -97,6 +97,16 @@ export default function HomeScreen() {
       const prio = getPriorityIds();
       // 加练模式下绕过每日新词上限
       const inExtra = extraRemainingRef.current != null && extraRemainingRef.current > 0;
+      // 每日目标已完成且非加练模式：不再自动加载单词（包括复习词），
+      // 显示"今日已学完"页面，复习通过"巩固测试"或"练习"Tab 进入
+      if (!inExtra && todayCount >= goal && goal > 0 && prio.length === 0) {
+        setWord(null);
+        hasWordRef.current = false;
+        const s = await repo.getWordbookStats(user.id, wordbook.id, now);
+        setStats(s);
+        setLoading(false);
+        return;
+      }
       const effectiveGoal = inExtra ? Number.POSITIVE_INFINITY : goal;
       const effectiveCount = inExtra ? 0 : todayCount;
       const [w, s] = await Promise.all([

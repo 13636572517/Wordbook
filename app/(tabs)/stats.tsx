@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -52,11 +52,9 @@ export default function StatsScreen() {
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: colors.background, paddingTop: insets.top },
-      ]}
+    <ScrollView
+      style={[styles.scrollWrap, { backgroundColor: colors.background, paddingTop: insets.top }]}
+      contentContainerStyle={styles.scrollContent}
     >
       <Text style={[styles.heading, { color: colors.text }]}>
         {wordbook.name} · 统计
@@ -172,7 +170,7 @@ export default function StatsScreen() {
       <Text style={[styles.note, { color: colors.subtitle }]}>
         复习采用 SM-2 间隔重复算法：选 Good/Easy 间隔变长，选 Again 会很快再次出现。
       </Text>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -206,6 +204,13 @@ const GRADE_COLOR: Record<number, string> = {
 };
 
 const styles = StyleSheet.create({
+  scrollWrap: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
   container: {
     flex: 1,
     paddingHorizontal: 20,
