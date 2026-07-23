@@ -119,7 +119,64 @@ def _should_stop() -> bool:
         return False
 
 
-# --- Youdao 词典解析（移植自前端 scripts/build-dict-cache.ts）---
+FREE_DICT_API = "https://api.dictionaryapi.dev/api/v2/entries/en"
+
+# --- 词典解析：Free Dictionary API（主源）---
+
+
+def _parse_free_dict(data: list) -> dict | None:
+    """解析 Free Dictionary API 响应 (api.dictionaryapi.dev)。
+
+    返回: {phonetic, definitions, examples, phrases} 或 None（无有效内容）。
+    """
+    if not isinstance(data, list) or not data:
+        return None
+    entry = data[0]
+    if not isinstance(entry, dict):
+        return None
+
+    definitions: list[dict] = []
+    examples: list[dict] = []
+
+    for meaning in entry.get("meanings") or []:
+        if not isinstance(meaning, dict):
+            continue
+        pos = meaning.get("partOfSpeech", "释义")
+        for defn in meaning.get("definitions") or []:
+            if not isinstance(defn, dict):
+                continue
+            d_text = (defn.get("definition") or "").strip()
+            if d_text:
+                definitions.append({"pos": pos, "definition": d_text})
+            example = (defn.get("example") or "").strip()
+            if example:
+                examples.append({"en": example, "zh": None})
+
+    if not definitions and not examples:
+        return None
+
+    return {
+        "phonetic": entry.get("phonetic"),
+        "definitions": definitions,
+        "examples": examples[:4],
+        "phrases": [],  # Free Dictionary API 无词组
+    }
+
+
+def _fetch_free_dict(word_text: str) -> dict | None:
+    """查询 Free Dictionary API。
+
+    返回: 解析结果 dict 或 None。
+    抛出: urllib.error.HTTPError(404) 等网络异常。
+    """
+    url = f"{FREE_DICT_API}/{urllib.parse.quote(word_text)}"
+    req = urllib.request.Request(url, headers={"User-Agent": "WordbookBot/1.0"})
+    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return _parse_free_dict(data)
+
+
+# --- 词典解析：有道词典（回退）---
 
 
 def _extract_text(v) -> str:
@@ -254,7 +311,7 @@ def _parse_youdao(data: dict) -> dict | None:
     return {"phonetic": phonetic, "definitions": definitions, "examples": examples, "phrases": phrases}
 
 
-def _fetch_word(word_text: str) -> dict | None:
+def _fetch_youdao(word_text: str) -> dict | None:
     """查询有道词典（urllib，gevent 下自动协程化）。
 
     返回 None = 有效响应但无词典内容（跳过）；
@@ -290,6 +347,22 @@ def _fetch_word(word_text: str) -> dict | None:
         if attempt < 2:
             time.sleep(1.5 * (attempt + 1))
     raise ValueError(f"API 连续返回错误词条数据（input={last_input}）")
+
+
+def _fetch_word(word_text: str) -> dict | None:
+    """查询单词释义：优先 Free Dictionary API，失败后回退有道。
+
+    Free Dict 返回 null → 尝试有道（提供中文释义作为补充）。
+    抛出异常 → 视为网络错误，_run_enrich_task 会标记 failed 并继续。
+    """
+    try:
+        result = _fetch_free_dict(word_text)
+        if result is not None:
+            return result
+    except Exception:
+        pass  # Free Dict 失败，回退有道
+
+    return _fetch_youdao(word_text)
 
 
 # --- 后台任务主体 ---
