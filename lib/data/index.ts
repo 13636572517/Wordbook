@@ -7,6 +7,7 @@ import { httpRepo } from './httpRepo';
 // 构建标识：每次部署改变此值可强制所有 chunk 哈希变化，避免客户端缓存新旧碎片。
 // 通过 EXPO_PUBLIC_BUILD_ID 注入；缺失时为 dev。
 export const BUILD_ID = process.env.EXPO_PUBLIC_BUILD_ID || 'dev';
+// 历史版本：20260723v2（cfd021e3）已部署；本次 bump 到 v3 强制所有客户端刷新。
 
 if (typeof window !== 'undefined') {
   (window as any).__APP_BUILD__ = BUILD_ID;
