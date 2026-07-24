@@ -62,6 +62,8 @@ export default function HomeScreen() {
   // 加练模式：null=未激活，number=本轮剩余新词数（每轮10个，可多轮）
   const [extraRemaining, setExtraRemaining] = useState<number | null>(null);
   const extraRemainingRef = useRef<number | null>(null);
+  // 加练模式：追踪本轮学过的词 ID，结束时用于单独巩固
+  const extraWordIdsRef = useRef<Set<string>>(new Set());
   // 巩固测试是否已完成（完成后不再显示“开始巩固测试”按钮）
   const [reviewCompleted, setReviewCompleted] = useState(false);
   const [cardKey, setCardKey] = useState(0);
@@ -204,9 +206,15 @@ export default function HomeScreen() {
       }
       // 加练模式：新词评分后递减剩余数
       if (isNew && extraRemainingRef.current != null && extraRemainingRef.current > 0) {
+        extraWordIdsRef.current.add(word.id);
         const next = extraRemainingRef.current - 1;
         extraRemainingRef.current = next;
         setExtraRemaining(next);
+        // 本批加练完成 → 自动进入巩固流程
+        if (next <= 0) {
+          startExtraReview();
+          return;
+        }
       }
       // 必须 await：确保下一词选词（读取进度）发生在 setProgress 的 PUT
       // 落库完成之后，否则进度缓存会读到旧值，刚学过的词仍被当作新词
@@ -243,6 +251,7 @@ export default function HomeScreen() {
         {
           text: '确定',
           onPress: () => {
+            extraWordIdsRef.current = new Set();
             extraRemainingRef.current = 10;
             setExtraRemaining(10);
             loadNext();
@@ -252,7 +261,7 @@ export default function HomeScreen() {
     );
   }, [loadNext, webAlert]);
 
-  // 开始复习测试流程
+  // 开始复习测试流程（日常巩固：取今天全部新词）
   const startReview = useCallback(async () => {
     setReviewPhase('fetching');
     const words = await fetchTodayReviewWords();
@@ -268,6 +277,27 @@ export default function HomeScreen() {
     setReviewDictScore(null);
     setReviewPhase('flashcards');
   }, [fetchTodayReviewWords]);
+
+  // 加练巩固：取本轮加练学过的词 ID，自动进入巩固
+  const startExtraReview = useCallback(async () => {
+    const ids = [...extraWordIdsRef.current];
+    if (ids.length === 0) return;
+    setReviewPhase('fetching');
+    // 按字母序取完整词数据（复用 repo.getWord 已有缓存策略）
+    const words: Word[] = [];
+    for (const id of ids) {
+      const w = await repo.getWord(id);
+      if (w) words.push(w);
+    }
+    words.sort((a, b) => a.word.localeCompare(b.word));
+    setTodayReviewWords(words);
+    setReviewFlashIdx(0);
+    setReviewFlashPass(0);
+    setReviewFlipped(false);
+    setReviewChoiceScore(null);
+    setReviewDictScore(null);
+    setReviewPhase('flashcards');
+  }, []);
 
   // 闪卡复习：翻面
   const onReviewFlip = useCallback(() => {
@@ -327,10 +357,18 @@ export default function HomeScreen() {
 
   // 退出复习（返回正常学习模式）
   const exitReview = useCallback(() => {
+    const wasExtra = extraWordIdsRef.current.size > 0;
     setReviewPhase(null);
     setTodayReviewWords([]);
-    // 巩固流程走完后标记已完成，不再重复显示“开始巩固测试”
-    setReviewCompleted(true);
+    // 加练巩固结束：清理加练状态，不标记日常巩固已完成
+    if (wasExtra) {
+      extraWordIdsRef.current = new Set();
+      setExtraRemaining(null);
+      extraRemainingRef.current = null;
+    } else {
+      // 日常巩固完成后标记，不再重复显示"开始巩固测试"
+      setReviewCompleted(true);
+    }
     loadNext();
   }, [loadNext]);
 
@@ -526,7 +564,12 @@ export default function HomeScreen() {
         <View style={styles.emptyContainer}>
           <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>✅</Text>
           <Text style={[styles.emptyTitle, { color: colors.text }]}>
-            巩固完成！
+            {extraWordIdsRef.current.size > 0 ? '加练巩固完成！' : '巩固完成！'}
+          </Text>
+          <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
+            {extraWordIdsRef.current.size > 0
+              ? `本轮 ${todayReviewWords.length} 个新词已巩固`
+              : `今日新词已巩固，点击返回继续学习或加练`}
           </Text>
           {reviewChoiceScore && (
             <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
