@@ -51,3 +51,8 @@ server-credentials.json
 # dict cache progress (intermediate file)
 lib/data/dictCache.json
 scripts/__pycache__/
+
+# production server runtime files
+.env
+frontend/
+deploy.sh
