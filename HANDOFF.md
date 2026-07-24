@@ -12,6 +12,12 @@
    - **唯一合法部署方式**：SSH 到服务器执行 `bash /opt/learning/deploy.sh`
    - **禁止**：手动 `expo export`、手动 `cp`、手动 `rsync`、手动编辑 nginx 配置
    - deploy.sh 已内置：构建 → 备份 → 复制到 nginx 路径 → 清缓存
+6. **⚠️ 构建必须带环境变量 `EXPO_PUBLIC_USE_CLOUD=true`（2026-07-24 生效，已导致多次登录消失故障）**：
+   - **根因**：Expo 在构建时将 `process.env.EXPO_PUBLIC_USE_CLOUD` 内联为常量。未设此变量 → 求值为 `false` → `CloudLoginScreen`（GESP 账号登录界面）被 Metro 判定为死代码并树摇删除 → 线上**登录功能完全消失**。
+   - `SessionProvider.tsx:35` 用 `EXPO_PUBLIC_USE_CLOUD === 'true'` 切换两个登录界面：`CloudLoginScreen`（云端 GESP 账号密码登录）vs `AuthScreen`（本地选人，无登录表单）。缺变量时只有 `AuthScreen`，用户无法登录。
+   - 受影响的远不止登录：`httpRepo` 等云端代码也会被树摇 → 词本列表为空、统计归零。
+   - **防护**：服务器 `/opt/learning/.env` 已写入 `EXPO_PUBLIC_USE_CLOUD=true`；`deploy.sh` 构建命令已硬编码该变量。
+   - **验证方法**：构建后检查 bundle 是否含 `GESP` 字符串（`grep -c GESP entry-*.js` 应 ≥ 2），含 `loginError`（应 ≥ 2），bundle 大小应 > 4,116,000 bytes。缺失则构建错误。
    - 该问题已导致 4 次以上生产故障（构建输出到错误目录，nginx 服务旧版本），**绝不再犯**
 
 ## 1. 项目位置与状态
