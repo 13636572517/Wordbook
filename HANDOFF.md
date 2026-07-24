@@ -402,3 +402,54 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 
 巩固测试自动包含加练中学的新词（通过 `study_logs` 的 `isNew=true` 记录查询）。
 
+## 15. 功能更新（2026-07-24）：加练模式自动巩固流程
+
+### 15.1 需求
+加练模式的巩固流程和每日学习一样：翻卡片学完 N 个新词后 → 闪卡三轮确认 → 选择释义测试 → 默写测试 → 结果。
+
+**改前**：加练学完新词后直接回"今日已学完"页面，没有专属巩固入口。
+
+**改后**：加练学完自动进入巩固流程，仅针对本批加练词。
+
+### 15.2 实现（仅 `app/(tabs)/index.tsx`）
+
+| 改动 | 说明 |
+|------|------|
+| `extraWordIdsRef`（new） | `useRef<Set<string>>()`，加练期间每学一个 `isNew` 词就 push 进 Set |
+| `handleGrade` | 加练词 `isNew` 时 `extraWordIdsRef.add(word.id)`；`extraRemaining` 减到 0 后调 `startExtraReview()` 并 return（跳过 `loadNext`） |
+| `startExtraReview`（new） | 取 `extraWordIdsRef` 中所有 ID → `repo.getWord()` 逐个拉完整词数据 → 按字母序排 → 启动 reviewPhase 状态机（fetching→flashcards→choice→dictation→done） |
+| `exitReview` | 检测 `extraWordIdsRef.size>0` → 加练巩固结束：重置 `extraWordIdsRef`、`setExtraRemaining(null)`；否则日常巩固：`setReviewCompleted(true)` |
+| `confirmExtraPractice.onPress` | 新开一轮加练前先 `extraWordIdsRef = new Set()` 清空上一轮 |
+| done 阶段 UI | `extraWordIdsRef.size>0` 时显示「加练巩固完成！」+「本轮 N 个新词已巩固」，否则显示原有文案 |
+
+### 15.3 加练完整流程（改后）
+
+```
+用户点"继续学习新词(+10)" → 确认弹窗
+  ↓ (extraWordIdsRef 清零)
+翻卡片学 10 个新词（newOnly=true，不穿插复习词）
+每个 isNew 词 → extraWordIdsRef.add(wordId)
+  ↓ extraRemaining → 0
+自动触发 startExtraReview()
+  ↓
+闪卡三轮确认（认识/不认识）
+  ↓
+选择释义测验（QuizRunner, type=choice）
+  ↓
+默写测验（QuizRunner, type=dictation）
+  ↓
+「加练巩固完成！」结果页（选择正确率 + 默写正确率）
+  ↓ 点击"返回学习"
+回到"今日已学完"页面（可再继续加练或结束）
+```
+
+### 15.4 与日常巩固的区别
+
+| | 日常巩固 | 加练巩固 |
+|---|---|---|
+| 触发 | 手动点「开始巩固测试」 | 加练学完后自动触发 |
+| 词源 | 今天全部 isNew 日志 | 本批加练的 wordIds |
+| 完成后 | `reviewCompleted=true`，按钮隐藏 | 重置加练状态，可再次加练 |
+| 结果页 | 「巩固完成！今日新词已巩固」 | 「加练巩固完成！本轮 N 个新词已巩固」 |
+
+
