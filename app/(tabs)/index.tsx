@@ -183,6 +183,14 @@ export default function HomeScreen() {
     }, [user, wordbook, loadNext]),
   );
 
+  // 防 Metro 死代码消除：review 回调在深层 JSX 中被 Metro 静态分析判定为不可达。
+  // 在顶层 useEffect 中无条件引用这些函数，打破 Metro 的"不可达"推论。
+  useEffect(() => {
+    // no-op: 仅用于注册函数引用，防止被 tree-shake
+    void startReview; void startExtraReview; void onReviewFlip; void onReviewKnow;
+    void onChoiceDone; void onDictDone; void exitReview; void fetchTodayReviewWords;
+  }, []);
+
   const handleGrade = async (grade: Grade) => {
     if (word && user && wordbook) {
       const now = Date.now();
@@ -420,6 +428,8 @@ export default function HomeScreen() {
         { backgroundColor: colors.background, paddingTop: insets.top },
       ]}
     >
+      {/* 强制 Metro 保留 review 相关代码：reviewPhase 作为 data 属性引用 */}
+      <View style={{ display: 'none' }} data-review={reviewPhase || 'idle'} data-extra={extraWordIdsRef.current.size} />
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.titleWrap}
