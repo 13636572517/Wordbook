@@ -129,47 +129,49 @@ export function genPhraseBlank(word: Word): PhraseBlankQuiz | null {
 
 /**
  * 例句选择：在例句语境中四选一选出正确单词。
- * 找包含 word.word（或其变形）的例句，将匹配词替换为 ______。
- * 从 similarWords 中取 3 个干扰项 + 正确答案，打乱为 4 选项。
+ * 遍历 word.examples 中所有包含目标词（或其变形）的例句，每句生成一道题。
+ * 干扰项从词本内其他单词中随机取 3 个。
  */
-export function genSentenceChoice(word: Word, similarWords: string[]): SentenceChoiceQuiz | null {
+export function genSentenceChoiceAll(word: Word, distractorPool: string[]): SentenceChoiceQuiz[] {
   const examples = word.examples;
-  if (!examples || examples.length === 0) return null;
+  if (!examples || examples.length === 0) return [];
   const target = word.word.toLowerCase();
-
-  // 构建变形列表：原形 + 常见变形
   const forms = buildWordForms(target);
+  const formsSet = new Set(forms);
+  const formsPattern = forms.map(escapeRegex).join('|');
+  const regex = new RegExp(`\\b(${formsPattern})\\b`, 'i');
 
+  // 预过滤干扰项池（排除目标词及其变形）
+  const validDistractors = distractorPool.filter(
+    (s) => !formsSet.has(s.toLowerCase()),
+  );
+  if (validDistractors.length < 3) return [];
+
+  const results: SentenceChoiceQuiz[] = [];
   for (const ex of examples) {
     const en = ex.en;
-    // 找例句中匹配目标词或其变形的位置
-    const formsPattern = forms.map(escapeRegex).join('|');
-    const regex = new RegExp(`\\b(${formsPattern})\\b`, 'i');
     const match = en.match(regex);
     if (!match) continue;
-
-    const matchedWord = match[1]; // 实际匹配到的形式（如 running）
+    const matchedWord = match[1];
     const sentence = en.replace(regex, '______');
-
-    // 从 similarWords 中取 3 个干扰项（排除目标词及其变形）
-    const formsSet = new Set(forms);
-    const distractorPool = similarWords.filter(
-      (s) => !formsSet.has(s.toLowerCase()),
-    );
-    const distractors = fisherYates(distractorPool).slice(0, 3);
-    if (distractors.length < 3) continue; // 干扰项不足，跳过该例句
-
+    const distractors = fisherYates(validDistractors).slice(0, 3);
     const options = fisherYates([matchedWord, ...distractors]);
-    return {
+    results.push({
       type: 'sentence-choice',
       word,
       sentence,
       sentenceZh: ex.zh,
       options,
       answer: matchedWord,
-    };
+    });
   }
-  return null;
+  return results;
+}
+
+/** @deprecated 使用 genSentenceChoiceAll 代替 */
+export function genSentenceChoice(word: Word, similarWords: string[]): SentenceChoiceQuiz | null {
+  const results = genSentenceChoiceAll(word, similarWords);
+  return results.length > 0 ? results[0] : null;
 }
 
 /** 构建单词变形列表（用于例句匹配） */

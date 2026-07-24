@@ -1,4 +1,4 @@
-import { fetchSimilarWords, postStudyLogs, repo, httpRepo } from '@/lib/data';
+import { postStudyLogs, repo, httpRepo } from '@/lib/data';
 import { fetchWordDetail } from '@/lib/data/httpRepo';
 import { reviewWord } from '@/lib/data/review';
 import {
@@ -7,6 +7,7 @@ import {
   genPhrase,
   genPhraseBlank,
   genSentenceChoice,
+  genSentenceChoiceAll,
   pickRange,
   type ChoiceQuiz,
   type DictationQuiz,
@@ -125,20 +126,8 @@ export default function QuizRunner({
 
       const pool: Quiz[] = [];
 
-      // 例句选择题需要异步获取近义词（最多 10 个词）
-      let similarMap: Map<string, string[]> = new Map();
-      if (types.includes('sentence-choice')) {
-        const candidates = quizWords.slice(0, 10);
-        const settled = await Promise.allSettled(
-          candidates.map((w) => fetchSimilarWords(w.word)),
-        );
-        candidates.forEach((w, i) => {
-          const r = settled[i];
-          if (r.status === 'fulfilled' && r.value.length >= 3) {
-            similarMap.set(w.id, r.value);
-          }
-        });
-      }
+      // 例句选择：用词本内所有词作为干扰项池（无需额外 API 调用）
+      const distractorPool = quizWords.map((w) => w.word);
 
       for (const w of quizWords) {
         for (const t of types) {
@@ -153,11 +142,8 @@ export default function QuizRunner({
             const q = genPhraseBlank(w);
             if (q) pool.push(q);
           } else if (t === 'sentence-choice') {
-            const similar = similarMap.get(w.id);
-            if (similar) {
-              const q = genSentenceChoice(w, similar);
-              if (q) pool.push(q);
-            }
+            const qs = genSentenceChoiceAll(w, distractorPool);
+            pool.push(...qs);
           }
         }
       }
