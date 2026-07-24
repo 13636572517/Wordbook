@@ -20,15 +20,16 @@ function w(id: string, word: string): Word {
   for (const x of words) await repo.upsertWord(x);
   for (const x of words) await repo.addWordToWordbook(A.id, x.id);
 
-  // 设定 lastReviewTs 落在不同位置（days=7 窗口 = [NOW-7d, NOW]）
-  const setTs = async (id: string, ts: number) => {
-    await repo.setProgress({ ...defaultProgress(u.id, A.id, id, NOW), lastReviewTs: ts });
+  // Recent review scope must come from the persisted study logs. Cloud progress
+  // deliberately has no lastReviewTs field.
+  const addLog = async (id: string, ts: number) => {
+    await repo.addStudyLog({ userId: u.id, wordbookId: A.id, wordId: id, grade: 2, ts });
   };
-  await setTs('w0', NOW); // 窗口内（今天）
-  await setTs('w1', NOW - 6 * DAY); // 窗口内
-  await setTs('w2', NOW - 7 * DAY); // 边界（恰好 7 天前）含
-  await setTs('w3', NOW - 8 * DAY); // 窗口外（8 天前）不含
-  // w4、w5 无进度 -> 不含
+  await addLog('w0', NOW); // 窗口内（今天）
+  await addLog('w1', NOW - 6 * DAY); // 窗口内
+  await addLog('w2', NOW - 7 * DAY); // 边界（恰好 7 天前）含
+  await addLog('w3', NOW - 8 * DAY); // 窗口外（8 天前）不含
+  // w4、w5 无学习日志 -> 不含
 
   const recent = await getRecentWords(repo, u.id, A.id, 7, NOW);
   const ids = new Set(recent.map((x) => x.id));

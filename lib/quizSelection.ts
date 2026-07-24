@@ -8,6 +8,10 @@ export function setPriorityIds(ids: string[]): void {
 export function clearPriorityIds(): void {
   priorityIds = [];
 }
+export function consumePriorityId(id: string): void {
+  const index = priorityIds.indexOf(id);
+  if (index >= 0) priorityIds.splice(index, 1);
+}
 export function getPriorityIds(): string[] {
   return priorityIds;
 }

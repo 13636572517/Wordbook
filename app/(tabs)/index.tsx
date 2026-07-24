@@ -19,7 +19,7 @@ import { getDailyNewWordGoal } from '@/lib/data/settings';
 import { reviewWord } from '@/lib/data/review';
 import type { WordbookStats } from '@/lib/data/stats';
 import { Grade } from '@/lib/sm2';
-import { getPriorityIds, clearPriorityIds } from '@/lib/quizSelection';
+import { consumePriorityId, getPriorityIds } from '@/lib/quizSelection';
 import { getLanguageByCode } from '@/lib/languages';
 import { useSession } from '@/components/SessionProvider';
 import FlashCard from '@/components/FlashCard';
@@ -122,7 +122,6 @@ export default function HomeScreen() {
       setReps(prog?.repetitions ?? 0);
       // 复习词判定：有进度且有正确/错误记录 → 之前学过
       setIsReview(prog != null && (prog.correct + prog.wrong) > 0);
-      clearPriorityIds();
       setWord(w);
       hasWordRef.current = w != null;
       setStats(s);
@@ -212,6 +211,7 @@ export default function HomeScreen() {
           isNew,
         });
       }
+      consumePriorityId(word.id);
       // 加练模式：新词评分后递减剩余数
       if (isNew && extraRemainingRef.current != null && extraRemainingRef.current > 0) {
         extraWordIdsRef.current.add(word.id);

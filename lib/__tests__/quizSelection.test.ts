@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { selectQuizWord, setPriorityIds, clearPriorityIds, getPriorityIds } from '../quizSelection';
+import { consumePriorityId, selectQuizWord, setPriorityIds, clearPriorityIds, getPriorityIds } from '../quizSelection';
 import type { Word } from '../database';
 
 function mk(over: Partial<Word>): Word {
@@ -33,6 +33,12 @@ const words = [
 ];
 setPriorityIds([3]);
 assert.strictEqual(selectQuizWord(words, getPriorityIds(), NOW)?.id, 3, 'priority id returned first');
+clearPriorityIds();
+
+// A re-practice batch should retain its remaining words after one is selected.
+setPriorityIds([3, 2]);
+consumePriorityId(3);
+assert.deepStrictEqual(getPriorityIds(), [2], 'consuming one priority word retains the rest of the batch');
 clearPriorityIds();
 
 // no priority, due words exist -> a due word is returned
