@@ -147,25 +147,30 @@ export function genSentenceChoiceAll(word: Word, distractorPool: string[]): Sent
   );
   if (validDistractors.length < 3) return [];
 
-  const results: SentenceChoiceQuiz[] = [];
+  // 收集所有匹配例句，随机挑 1 句出题
+  const matched: { sentence: string; sentenceZh?: string; matchedWord: string }[] = [];
   for (const ex of examples) {
     const en = ex.en;
     const match = en.match(regex);
     if (!match) continue;
-    const matchedWord = match[1];
-    const sentence = en.replace(regex, '______');
-    const distractors = fisherYates(validDistractors).slice(0, 3);
-    const options = fisherYates([matchedWord, ...distractors]);
-    results.push({
-      type: 'sentence-choice',
-      word,
-      sentence,
+    matched.push({
+      sentence: en.replace(regex, '______'),
       sentenceZh: ex.zh,
-      options,
-      answer: matchedWord,
+      matchedWord: match[1],
     });
   }
-  return results;
+  if (matched.length === 0) return [];
+  const pick = matched[Math.floor(Math.random() * matched.length)];
+  const distractors = fisherYates(validDistractors).slice(0, 3);
+  const options = fisherYates([pick.matchedWord, ...distractors]);
+  return [{
+    type: 'sentence-choice',
+    word,
+    sentence: pick.sentence,
+    sentenceZh: pick.sentenceZh,
+    options,
+    answer: pick.matchedWord,
+  }];
 }
 
 /** @deprecated 使用 genSentenceChoiceAll 代替 */
