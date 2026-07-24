@@ -807,11 +807,26 @@ class TeacherStudentWeakWordsView(APIView):
             qs = qs.filter(wordbook_id=int(wb_id))
         qs = qs.select_related("word").order_by("-repetitions")
 
+        recent_since = int(time.time() * 1000) - 30 * 86400000
+        practice_qs = StudyLog.objects.filter(
+            user_id=user_id, source="quiz", grade=0, ts__gte=recent_since,
+        )
+        if wb_id:
+            practice_qs = practice_qs.filter(wordbook_id=int(wb_id))
+        frequent_practice_wrong = {
+            item["word_id"]: item["count"]
+            for item in practice_qs.values("word_id").annotate(count=Count("id"))
+        }
+
         result = []
         for p in qs:
             total = p.correct + p.wrong
             error_rate = round(p.wrong / total, 3) if total > 0 else 0
-            is_weak = (total > 0 and error_rate >= 0.34) or p.ef < 1.8
+            is_weak = (
+                (total > 0 and error_rate >= 0.34)
+                or p.ef < 1.8
+                or frequent_practice_wrong.get(p.word_id, 0) >= 2
+            )
             is_mastered = p.repetitions >= 2 and p.ef >= 2.5 and p.interval >= 21
             if is_weak and not is_mastered:
                 result.append({
