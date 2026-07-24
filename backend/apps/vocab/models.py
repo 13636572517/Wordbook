@@ -131,6 +131,28 @@ class UserWordProgress(models.Model):
         return f"user={self.user_id} word={self.word.word} due={self.due}"
 
 
+class UserPhraseProgress(models.Model):
+    """用户在词本内对单词词组的独立 SM-2 进度。"""
+
+    user_id = models.BigIntegerField(db_index=True)
+    wordbook = models.ForeignKey(Wordbook, on_delete=models.CASCADE, related_name="phrase_progress_records")
+    word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name="phrase_progress_records")
+    phrase_key = models.CharField(max_length=64)
+    phrase = models.CharField(max_length=255)
+    meaning = models.TextField(blank=True, default="")
+    ef = models.FloatField(default=2.5)
+    interval = models.IntegerField(default=0)
+    repetitions = models.IntegerField(default=0)
+    due = models.BigIntegerField(default=0)
+    correct = models.IntegerField(default=0)
+    wrong = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "user_phrase_progress"
+        constraints = [models.UniqueConstraint(fields=["user_id", "wordbook", "phrase_key"], name="uq_user_wordbook_phrase")]
+        indexes = [models.Index(fields=["user_id", "wordbook", "due"], name="idx_phrase_progress_due")]
+
+
 class StudyLog(models.Model):
     """学习日志（每次复习记录）。"""
 

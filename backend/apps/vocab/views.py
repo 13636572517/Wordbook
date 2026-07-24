@@ -20,7 +20,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .admin_check import is_admin_user, is_teacher_or_admin
-from .models import StudyLog, UserSettings, UserWordProgress, Word, Wordbook, WordbookWord
+from .models import StudyLog, UserPhraseProgress, UserSettings, UserWordProgress, Word, Wordbook, WordbookWord
 from .serializers import (
     ProgressUpdateItem,
     StudyLogSerializer,
@@ -393,6 +393,52 @@ class StudyLogListView(APIView):
         qs = qs.order_by("ts")
         serializer = StudyLogSerializer(qs, many=True)
         return Response(serializer.data)
+
+
+class PhraseProgressView(APIView):
+    """词组卡独立 SM-2 进度。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        wordbook_id = request.query_params.get("wordbook_id")
+        if not wordbook_id:
+            return Response({"error": "wordbook_id 不能为空"}, status=400)
+        now = int(time.time() * 1000)
+        qs = UserPhraseProgress.objects.filter(
+            user_id=request.user.id, wordbook_id=wordbook_id, due__lte=now,
+        ).order_by("due")[:20]
+        return Response([{
+            "id": item.id, "word_id": item.word_id, "phrase_key": item.phrase_key,
+            "phrase": item.phrase, "meaning": item.meaning, "ef": item.ef,
+            "interval": item.interval, "repetitions": item.repetitions, "due": item.due,
+        } for item in qs])
+
+    def post(self, request):
+        data = request.data
+        required = ("wordbook_id", "word_id", "phrase_key", "phrase", "grade")
+        if any(data.get(key) in (None, "") for key in required):
+            return Response({"error": "词组进度字段不完整"}, status=400)
+        grade = int(data["grade"])
+        if grade not in (0, 1, 2, 3):
+            return Response({"error": "grade 必须为 0-3"}, status=400)
+        now = int(data.get("ts") or time.time() * 1000)
+        obj, _ = UserPhraseProgress.objects.get_or_create(
+            user_id=request.user.id, wordbook_id=data["wordbook_id"], phrase_key=data["phrase_key"],
+            defaults={"word_id": data["word_id"], "phrase": data["phrase"], "meaning": data.get("meaning", ""), "due": now},
+        )
+        q = grade + 2
+        if q < 3:
+            obj.repetitions, obj.interval, obj.ef = 0, 0, max(1.3, obj.ef - 0.2)
+            obj.wrong += 1
+        else:
+            obj.interval = (1 if obj.repetitions == 0 else 3 if obj.repetitions == 1 else max(1, round(obj.interval * (1.2 if grade == 1 else obj.ef))))
+            obj.repetitions += 1
+            obj.correct += 1
+        obj.due = now + obj.interval * 86400000
+        obj.phrase, obj.meaning = data["phrase"], data.get("meaning", "")
+        obj.save()
+        return Response({"id": obj.id, "due": obj.due, "repetitions": obj.repetitions})
 
 
 class UserSettingsView(APIView):

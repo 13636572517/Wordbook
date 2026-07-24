@@ -16,6 +16,8 @@ export default function Root({ children }: { children: React.ReactNode }) {
         {/* PWA */}
         <meta name="theme-color" content="#0D0D0D" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+        <link rel="shortcut icon" href="/icons/icon-192.png" />
         <link rel="manifest" href="/manifest.json" />
 
         {/* iOS PWA */}

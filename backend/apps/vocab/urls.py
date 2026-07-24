@@ -18,6 +18,7 @@ urlpatterns = [
     # 学习日志
     path("study-logs/", views.StudyLogView.as_view()),
     path("study-logs/list/", views.StudyLogListView.as_view()),
+    path("phrase-progress/", views.PhraseProgressView.as_view()),
     # 用户设置（每日新词上限）
     path("settings/", views.UserSettingsView.as_view()),
     # 单词搜索

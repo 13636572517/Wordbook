@@ -100,25 +100,25 @@ function shuffle<T>(arr: T[]): T[] {
   assert.ok(!weakIds.has('w1') && !weakIds.has('w3'), 'weak excludes non-weak words');
   assert.ok(!weakIds.has('w4') && !weakIds.has('w5'), 'weak excludes no-progress words');
 
-  // recent：w6/w7/w8 lastReviewTs 落在 7 天窗口内，其余窗口外或无进度
-  await setProgress('w6', { lastReviewTs: NOW });
-  await setProgress('w7', { lastReviewTs: NOW - 6 * DAY });
-  await setProgress('w8', { lastReviewTs: NOW - 8 * DAY }); // 窗口外
+  // recent：范围由学习日志驱动，匹配云端实现。
+  await repo.addStudyLog({ userId: u.id, wordbookId: A.id, wordId: 'w6', grade: 2, ts: NOW });
+  await repo.addStudyLog({ userId: u.id, wordbookId: A.id, wordId: 'w7', grade: 2, ts: NOW - 6 * DAY });
+  await repo.addStudyLog({ userId: u.id, wordbookId: A.id, wordId: 'w8', grade: 2, ts: NOW - 8 * DAY }); // 窗口外
   const recent = await pickRange(repo, u.id, A.id, 'recent', { now: NOW, days: 7 });
   const recentIds = new Set(recent.map((x) => x.id));
   assert.ok(recentIds.has('w6') && recentIds.has('w7'), 'recent includes words within 7d');
   assert.strictEqual(recent.length, 2, 'recent -> exactly 2 within window');
   assert.ok(!recentIds.has('w8'), 'recent excludes word 8 days ago');
 
-  // studied：仅已学过的词（有 correct/wrong 或 lastReviewTs）。
-  // 到这里 w0..w3 有 correct/wrong，w6/w7/w8 有 lastReviewTs → 共 7 个；w4/w5/w9 无进度被排除。
+  // studied：仅已学过的词（有 correct/wrong、lastReviewTs 或其他进度信号）。
+  // 到这里 w0..w3 有 correct/wrong；w6/w7/w8 只有日志，不产生进度，故不在 studied 范围。
   const studied = await pickRange(repo, u.id, A.id, 'studied', { now: NOW });
   const studiedIds = new Set(studied.map((x) => x.id));
-  assert.strictEqual(studied.length, 7, 'studied -> only words with real progress');
-  for (const id of ['w0', 'w1', 'w2', 'w3', 'w6', 'w7', 'w8']) {
+  assert.strictEqual(studied.length, 4, 'studied -> only words with real progress');
+  for (const id of ['w0', 'w1', 'w2', 'w3']) {
     assert.ok(studiedIds.has(id), `studied includes ${id}`);
   }
-  for (const id of ['w4', 'w5', 'w9']) {
+  for (const id of ['w4', 'w5', 'w6', 'w7', 'w8', 'w9']) {
     assert.ok(!studiedIds.has(id), `studied excludes never-studied ${id}`);
   }
 

@@ -24,7 +24,7 @@ import { getLanguageByCode } from '@/lib/languages';
 import { useSession } from '@/components/SessionProvider';
 import FlashCard from '@/components/FlashCard';
 import { speakWord } from '@/lib/speech';
-import { fetchWordDetail } from '@/lib/data/httpRepo';
+import { fetchDuePhraseCards, fetchWordDetail, recordPhraseProgress, type PhraseProgressCard } from '@/lib/data/httpRepo';
 import QuizRunner from '@/components/QuizRunner';
 import { useWebAlert } from '@/components/WebAlert';
 
@@ -50,6 +50,7 @@ type ReviewPhase =
 
 export default function HomeScreen() {
   const [word, setWord] = useState<Word | null>(null);
+  const [phraseQueue, setPhraseQueue] = useState<PhraseProgressCard[]>([]);
   const [isFlipped, setIsFlipped] = useState(false);
   const [stats, setStats] = useState<WordbookStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,6 +99,14 @@ export default function HomeScreen() {
       dailyGoalRef.current = goal;
       todayCountRef.current = todayCount;
       const prio = getPriorityIds();
+      if (isCloud && phraseQueue.length === 0) {
+        const duePhrases = await fetchDuePhraseCards(wordbook.id);
+        if (duePhrases.length > 0) {
+          setPhraseQueue([duePhrases[0]]);
+          setLoading(false);
+          return;
+        }
+      }
       // 加练模式下绕过每日新词上限
       const inExtra = extraRemainingRef.current != null && extraRemainingRef.current > 0;
       // 每日目标已完成且非加练模式：不再自动加载单词（包括复习词），
@@ -212,6 +221,18 @@ export default function HomeScreen() {
         });
       }
       consumePriorityId(word.id);
+      if (isNew && grade >= 1 && isCloud) {
+        const full = word.phrases?.length ? word : await fetchWordDetail(word.id);
+        const cards = (full.phrases ?? []).slice(0, 2).map((item) => ({
+          wordId: word.id, phraseKey: `${word.id}:${item.phrase.trim().toLowerCase()}`,
+          phrase: item.phrase, meaning: item.meaning,
+        }));
+        if (cards.length > 0) {
+          setPhraseQueue(cards);
+          setWord(null);
+          return;
+        }
+      }
       // 加练模式：新词评分后递减剩余数
       if (isNew && extraRemainingRef.current != null && extraRemainingRef.current > 0) {
         extraWordIdsRef.current.add(word.id);
@@ -229,6 +250,13 @@ export default function HomeScreen() {
       // 重新选中，导致卡在单个词无限循环。
       await loadNext();
     }
+  };
+
+  const handlePhraseGrade = async (grade: Grade) => {
+    if (!wordbook || phraseQueue.length === 0) return;
+    await recordPhraseProgress(wordbook.id, phraseQueue[0], grade);
+    setPhraseQueue((queue) => queue.slice(1));
+    if (phraseQueue.length <= 1) await loadNext();
   };
 
   // 获取今日新学单词的完整数据
@@ -657,6 +685,15 @@ export default function HomeScreen() {
             </>
           )}
         </ScrollView>
+      ) : !reviewPhase && phraseQueue.length > 0 ? (
+        <View style={styles.cardArea}>
+          <Text style={[styles.masteryHint, { color: colors.subtitle }]}>词组学习</Text>
+          <View style={[styles.phraseCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.phraseText, { color: colors.text }]}>{phraseQueue[0].phrase}</Text>
+            <Text style={[styles.phraseMeaning, { color: colors.subtitle }]}>{phraseQueue[0].meaning}</Text>
+          </View>
+          <View style={styles.gradeRow}>{GRADES.map((g) => <TouchableOpacity key={g.grade} style={[styles.gradeButton, { backgroundColor: g.color }]} onPress={() => handlePhraseGrade(g.grade)}><Text style={styles.gradeText}>{g.label}</Text></TouchableOpacity>)}</View>
+        </View>
       ) : !reviewPhase && word ? (
         <View style={styles.cardArea}>
           {extraRemaining != null && extraRemaining > 0 && (
@@ -726,6 +763,9 @@ function StatChip({
 }
 
 const styles = StyleSheet.create({
+  phraseCard: { width: '100%', padding: 24, borderRadius: 14, alignItems: 'center', gap: 10 },
+  phraseText: { fontSize: 24, fontWeight: '700', textAlign: 'center' },
+  phraseMeaning: { fontSize: 16, textAlign: 'center' },
   container: {
     flex: 1,
     paddingHorizontal: 20,

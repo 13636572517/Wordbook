@@ -564,6 +564,20 @@ export async function postStudyLogs(
   });
 }
 
+export type PhraseProgressCard = { wordId: ID; phraseKey: string; phrase: string; meaning: string };
+
+export async function fetchDuePhraseCards(wordbookId: ID): Promise<PhraseProgressCard[]> {
+  const data = await api<any[]>(`/phrase-progress/?wordbook_id=${toNum(wordbookId)}`);
+  return data.map((item) => ({ wordId: toStr(item.word_id), phraseKey: item.phrase_key, phrase: item.phrase, meaning: item.meaning }));
+}
+
+export async function recordPhraseProgress(wordbookId: ID, card: PhraseProgressCard, grade: number): Promise<void> {
+  await api('/phrase-progress/', { method: 'POST', body: JSON.stringify({
+    wordbook_id: toNum(wordbookId), word_id: toNum(card.wordId), phrase_key: card.phraseKey,
+    phrase: card.phrase, meaning: card.meaning, grade, ts: Date.now(),
+  }) });
+}
+
 /** 搜索单词 */
 export async function searchWords(q: string): Promise<Word[]> {
   const data = await api<any[]>(`/words/search/?q=${encodeURIComponent(q)}`);
