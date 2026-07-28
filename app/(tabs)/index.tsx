@@ -111,16 +111,9 @@ export default function HomeScreen() {
       }
       // 加练模式下绕过每日新词上限
       const inExtra = extraRemainingRef.current != null && extraRemainingRef.current > 0;
-      // 每日目标已完成且非加练/优先级模式：不再自动加载单词（包括复习词），
-      // 显示"今日已学完"页面，复习通过"巩固测试"或"练习"Tab 进入
-      if (!inExtra && todayCount >= goal && goal > 0 && prio.length === 0) {
-        setWord(null);
-        hasWordRef.current = false;
-        const s = await repo.getWordbookStats(user.id, wordbook.id, now);
-        setStats(s);
-        setLoading(false);
-        return;
-      }
+      // 每日新词目标完成后不立即结束：继续加载到期复习词，
+      // 直到复习词也全部学完，getNextQuizWord 返回 null 时才显示"今日已学完"。
+      // （allowNew 由 effectiveCount >= effectiveGoal 自动变为 false，无需 early return）
       const effectiveGoal = inExtra ? Number.POSITIVE_INFINITY : goal;
       const effectiveCount = inExtra ? 0 : todayCount;
       // 加练模式只学新词，跳过复习词（学完后统一进入巩固测试）
