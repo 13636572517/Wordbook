@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-07-24（练习模块UX修复 + 全局Alert兼容 + 部署路径修正）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-07-29（loadNext 空窗期 All caught up 修复）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -36,6 +36,13 @@
 
 ### 最近提交（main，新→旧）
 ```
+27c8730 fix: loadNext 期间显示 loading 而非 All caught up，修复学习中断假象
+614f7e5 feat: 巩固闪卡+选择测验自动播放单词发音（中翻英类除外）
+4f2b598 fix: 新词目标完成后继续学完到期复习词，不再提前结束学习会话
+04acc56 fix: 复习词评Again后不立即重新插队，确保每日新词额度不被堵死
+4d1ecee fix: 例句选择每词随机挑1句出题，避免题量过大
+4d1ecee..ea7a9b5 (squashed) fix: 例句选择题使用全部例句+词本内干扰项，移除10题硬编码上限
+0b5173c chore: gitignore production server runtime files (.env, frontend/, deploy.sh)
 d42027a feat: 加练模式只学新词，跳过复习词
 4395cf7 fix: 练习模块5项UX修复（提示位置/默写无提示/选择无大写/加练弹窗）
 be59c66 fix: 全局Alert.alert替换为Web兼容浮层(WebAlertProvider)
@@ -463,4 +470,135 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 | 完成后 | `reviewCompleted=true`，按钮隐藏 | 重置加练状态，可再次加练 |
 | 结果页 | 「巩固完成！今日新词已巩固」 | 「加练巩固完成！本轮 N 个新词已巩固」 |
 
+## 16. 功能更新（2026-07-24）：词组学习与薄弱词规则
 
+### 16.1 已上线并核验
+
+- 系统词本 ID `6` 已由「上海沪教版初中（开放词库）」更名为「沪教版初中」；来源字段仍明确标注开放词库、非教材逐册精确版。
+- 网页 `<head>` 已显式复用 PWA 的 `/icons/icon-192.png` 作为页签图标（`app/+html.tsx`）。
+- 薄弱词前端规则（`lib/data/weak.ts`）：保留累计错率 `>= 0.34` 或 `EF < 1.8`，新增“近 30 天 `source='quiz'` 且 `grade=0` 至少 2 次”的条件。解决历史正确率掩盖近期反复测试错误的问题。
+- 词组进度迁移 `vocab.0004_userphraseprogress` 已在生产 MySQL 执行。`user_phrase_progress` 以 `(user_id, wordbook_id, phrase_key)` 唯一，保存词组文本、释义与独立 SM-2 字段。
+- 前端生产 bundle 已核验包含 `phrase-progress`；首页会在新词评分后抽取最多 2 个词组卡，词组评分走 `/api/phrase-progress/`。到期词组会优先进入首页学习队列。
+
+### 16.2 代码与接口
+
+- 提交 `e2c392e feat: add phrase learning progress`：`UserPhraseProgress` 模型、`0004` 迁移、`PhraseProgressView`（`GET/POST /api/phrase-progress/`）、首页词组卡、词组 SM-2 写入。
+- `GET /api/phrase-progress/?wordbook_id=<id>`：返回当前词本到期词组（最多 20 条）。
+- `POST /api/phrase-progress/`：接收 `wordbook_id / word_id / phrase_key / phrase / meaning / grade / ts`，服务端计算词组 SM-2。
+- 词组内容不新建全局 `Phrase` 表，继续从 `Word.phrases` JSON 读取；生产库共 7,554 个词，其中 5,260 个非空词组字段、共 28,323 条词组。
+
+### 16.3 部署核验（2026-07-25 已完成）
+
+- ✅ 教师端薄弱词接口（`538a791 fix: align teacher weak words with quiz mistakes`）已部署：`views.py` 已同步至 `/opt/learning/backend/apps/vocab/views.py`，`learning.service` 已重启（active），`grep frequent_practice_wrong` 回读确认第 816/828 行存在。
+- ✅ 后端关键文件 MD5 与本地 main 一致：`models.py`、`urls.py`、`prod.py`、`enrich_service.py`、`views.py`。
+- ✅ 前端 bundle 核验：`phrase-progress` 存在（1处）、`GESP` 存在（2处）、bundle 大小 4,127,109 bytes > 4,116,000 阈值。
+- ✅ `showmigrations vocab`：0001–0004 全部 `[X]`。
+- 服务器 `/opt/learning` 不应直接 `git pull`：本地历史提交混入 `.env` 与静态备份，且与 GitHub `main` 分叉。安全同步方式：`git fetch origin main` 后以 `git show FETCH_HEAD:<文件> > <文件>` 逐文件更新；不要使用含未转义循环变量的远程命令。
+
+
+## 17. 修复（2026-07-25）：例句选择题逻辑 + 服务器 git 工作流
+
+### 17.1 例句选择题只有 10 题（`ea7a9b5`，已部署）
+
+**问题**：练习模块"例句选择"题型无论词本有多少词，最多只出 10 题。
+
+**根因**：`QuizRunner.tsx` 第 131 行 `quizWords.slice(0, 10)` 硬编码只取前 10 个词，且每个词只取第一个匹配例句；干扰项依赖 `/words/similar/` API 逐词调用（性能瓶颈）。
+
+**修复**：
+- `lib/quizgen.ts`：新增 `genSentenceChoiceAll(word, distractorPool)` 函数，遍历词的**所有例句**，每句含目标词则生成一道题；干扰项从词本内其他词随机取 3 个。
+- `components/QuizRunner.tsx`：移除 `fetchSimilarWords` API 调用和 `slice(0, 10)` 限制；改用 `quizWords.map(w => w.word)` 作为干扰项池，对每个词调用 `genSentenceChoiceAll`。
+- 保留旧 `genSentenceChoice` 为 deprecated 兼容包装。
+
+**效果**：每个词从其匹配例句中**随机挑 1 句**出题（`4d1ecee` 追加限制，避免多例句词导致题量爆炸），题目数 ≈ 范围内满足条件的词数，零额外 API 调用。
+
+### 17.2 服务器 git pull 工作流修复（`0b5173c`）
+
+**问题**：服务器 `/opt/learning` 与 GitHub main 分叉，只能 scp 逐文件同步。
+
+**根因**：
+1. remote 用 HTTPS（443 端口被墙），`git fetch` 超时
+2. 服务器有 1 个本地 deploy commit 与 GitHub 24 个 commit 分叉
+3. `.env`、`frontend/` 未加入 `.gitignore`
+
+**修复**：
+- remote 改为 SSH：`git@github.com:13636572517/Wordbook.git`（服务器 SSH 到 GitHub 畅通）
+- `git reset --hard origin/main` 对齐
+- `.gitignore` 追加：`.env`、`frontend/`、`deploy.sh`
+- 删除旧分支 `feature/wordbook-account`、清理 `dist_backup` 垃圾目录
+- 重建 `deploy.sh`（构建 → 备份 → 部署 → 验证 bundle 大小和 GESP 计数）
+
+**新部署流程**：
+```
+本地 push → GitHub main
+服务器: cd /opt/learning && git pull origin main
+前端: bash deploy.sh
+后端: sudo systemctl restart learning.service
+```
+
+## 18. 修复（2026-07-29）：学习会话完整性（新词+复习词都完成才结束）
+
+### 18.1 复习词评 Again 后卡死新词（`04acc56`，已部署）
+
+**问题**：复习词评 Again → SM-2 重置 due=now → 该词立即变成"最到期"→ 下次又选中它 → 新词永远排不上。
+
+**修复**（3 文件，+17/-5）：
+- `app/(tabs)/index.tsx`：`lastWordIdRef` 暂存刚评完的复习词 ID，选到新词时清除
+- `lib/data/quiz.ts`：透传 `skipWordId` 参数
+- `lib/quizSelection.ts`：due 队列过滤 skipIdxs，被跳过的词本轮不再出现
+
+### 18.2 新词目标完成后提前结束学习（`4f2b598`，已部署）
+
+**问题**：`todayCount >= goal` 时 early return 直接显示"今日已学完"，到期复习词被跳过。
+
+**需求**：每日学习任务 = 新词 + 复习词。新词目标完成后，还要把当天到期复习词学完，才能结束。
+
+**修复**（`app/(tabs)/index.tsx`，+3/-10）：
+- 删除 early return 代码块
+- 让 `getNextQuizWord` 自然处理：goal 达到后 `allowNew=false` → 只返回到期复习词 → 复习词也学完 → 返回 null → 显示"今日已学完"
+
+### 18.3 当前选词优先级
+
+```
+1. priority 重练队列（薄弱词 Tab 手动加入）
+2. due 复习词（到期就复习，skipWordId 防同一个词反复卡位）
+3. fresh 新词（按词本字母序）
+4. null → "今日已学完"
+```
+
+新词和复习词混合出现，但同一个复习词不会连续出现两次（skipWordId 机制），保障新词进度不被堵死。
+
+## 19. 功能（2026-07-29）：学习环节语音播放扩展（`614f7e5`，已部署）
+
+**需求**：除中翻英类练习外，所有学习环节都应播放单词发音。
+
+**改前**：仅主学习阶段（翻卡学新词）播放语音。
+
+**改后**：
+
+| 环节 | 语音 | 说明 |
+|------|------|------|
+| 主学习（翻卡学新词） | ✅ | 原有 |
+| 巩固闪卡（3遍） | ✅ 新增 | `useEffect` 监听 `reviewFlashIdx` 变化时 `speakWord` |
+| 选择释义测验 | ✅ 新增 | QuizRunner `useEffect` 监听 `idx` 变化，非 dictation/phrase-blank 时播放 |
+| 默写测验（中翻英） | ❌ 不播放 | 播放会泄露答案 |
+| 词组填空（中翻英） | ❌ 不播放 | 同上 |
+
+**涉及文件**：
+- `app/(tabs)/index.tsx`：巩固闪卡 `useEffect` + `speakWord`
+- `components/QuizRunner.tsx`：题目切换 `useEffect` + `speakWord`（排除 dictation/phrase-blank）
+
+## 20. 修复（2026-07-29）：loadNext 空窗期误显"All caught up"（`27c8730`，已部署）
+
+**现象**：用户学了几个词后（特别是词组卡结束后），突然看到「六级」没有待复习的词了。
+
+**根因**：`loadNext()` 是异步函数，但调用时不设 `loading=true`。当 `word` 为 null（如词组卡
+结束后 `setWord(null)`）时，异步等待期间 UI 渲染走进 `!reviewPhase && !word` 分支，
+显示"All caught up"空状态而非加载动画。若网络慢（676KB 词表），用户会看到数秒的空状态。
+
+**修复**（`app/(tabs)/index.tsx`，+2/-1 行）：
+1. `loadNext` 开头加 `setLoading(true)`
+2. 渲染条件从 `if (loading || ...)` 改为 `if ((loading && !word) || ...)`
+   - 有当前词卡时不显示全屏 spinner（避免词卡间切换闪烁）
+   - 无词卡时（词组过渡、首次加载）显示 spinner 而非空状态
+
+**效果**：词组卡结束 → 显示 spinner → 下一个单词出现。不再闪现"All caught up"。
