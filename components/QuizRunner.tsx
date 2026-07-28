@@ -1,4 +1,8 @@
 import { postStudyLogs, repo, httpRepo } from '@/lib/data';
+import { speakWord } from '@/lib/speech';
+import { getLanguageByCode } from '@/lib/languages';
+
+const ENGLISH = getLanguageByCode('en');
 import { fetchWordDetail } from '@/lib/data/httpRepo';
 import { reviewWord } from '@/lib/data/review';
 import {
@@ -225,6 +229,14 @@ export default function QuizRunner({
   }
 
   const q = questions[idx];
+
+  // 非中翻英题型自动播放单词发音（dictation/phrase-blank 是看中文写英文，不能播放）
+  useEffect(() => {
+    if (q && q.type !== 'dictation' && q.type !== 'phrase-blank') {
+      speakWord(q.word.word, ENGLISH);
+    }
+  }, [idx, q]);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.progressRow}>

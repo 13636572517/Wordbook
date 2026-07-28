@@ -297,6 +297,14 @@ export default function HomeScreen() {
     );
   }, [loadNext, webAlert]);
 
+  // 巩固闪卡切换时自动播放发音
+  useEffect(() => {
+    if (reviewPhase === 'flashcards' && todayReviewWords.length > 0) {
+      const w = todayReviewWords[reviewFlashIdx];
+      if (w) speakWord(w.word, ENGLISH);
+    }
+  }, [reviewPhase, reviewFlashIdx, todayReviewWords]);
+
   // 开始复习测试流程（日常巩固：取今天全部新词）
   const startReview = useCallback(async () => {
     setReviewPhase('fetching');
