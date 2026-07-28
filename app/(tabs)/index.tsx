@@ -649,7 +649,16 @@ export default function HomeScreen() {
       )}
 
       {/* --- 正常学习模式 --- */}
-      {!reviewPhase && !word ? (
+      {!reviewPhase && phraseQueue.length > 0 ? (
+        <View style={styles.cardArea}>
+          <Text style={[styles.masteryHint, { color: colors.subtitle }]}>词组学习</Text>
+          <View style={[styles.phraseCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.phraseText, { color: colors.text }]}>{phraseQueue[0].phrase}</Text>
+            <Text style={[styles.phraseMeaning, { color: colors.subtitle }]}>{phraseQueue[0].meaning}</Text>
+          </View>
+          <View style={styles.gradeRow}>{GRADES.map((g) => <TouchableOpacity key={g.grade} style={[styles.gradeButton, { backgroundColor: g.color }]} onPress={() => handlePhraseGrade(g.grade)}><Text style={styles.gradeText}>{g.label}</Text></TouchableOpacity>)}</View>
+        </View>
+      ) : !reviewPhase && !word ? (
         <ScrollView
           style={styles.emptyScroll}
           contentContainerStyle={styles.emptyContainer}
@@ -694,15 +703,6 @@ export default function HomeScreen() {
             </>
           )}
         </ScrollView>
-      ) : !reviewPhase && phraseQueue.length > 0 ? (
-        <View style={styles.cardArea}>
-          <Text style={[styles.masteryHint, { color: colors.subtitle }]}>词组学习</Text>
-          <View style={[styles.phraseCard, { backgroundColor: colors.card }]}>
-            <Text style={[styles.phraseText, { color: colors.text }]}>{phraseQueue[0].phrase}</Text>
-            <Text style={[styles.phraseMeaning, { color: colors.subtitle }]}>{phraseQueue[0].meaning}</Text>
-          </View>
-          <View style={styles.gradeRow}>{GRADES.map((g) => <TouchableOpacity key={g.grade} style={[styles.gradeButton, { backgroundColor: g.color }]} onPress={() => handlePhraseGrade(g.grade)}><Text style={styles.gradeText}>{g.label}</Text></TouchableOpacity>)}</View>
-        </View>
       ) : !reviewPhase && word ? (
         <View style={styles.cardArea}>
           {extraRemaining != null && extraRemaining > 0 && (
