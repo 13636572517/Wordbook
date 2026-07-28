@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-07-29（loadNext 空窗期 All caught up 修复）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-07-29（词组卡渲染优先级修复）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -36,6 +36,7 @@
 
 ### 最近提交（main，新→旧）
 ```
+b38684f fix: 词组卡渲染优先级提到空状态之前，修复学完单词后误显 All caught up
 27c8730 fix: loadNext 期间显示 loading 而非 All caught up，修复学习中断假象
 614f7e5 feat: 巩固闪卡+选择测验自动播放单词发音（中翻英类除外）
 4f2b598 fix: 新词目标完成后继续学完到期复习词，不再提前结束学习会话
@@ -602,3 +603,20 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
    - 无词卡时（词组过渡、首次加载）显示 spinner 而非空状态
 
 **效果**：词组卡结束 → 显示 spinner → 下一个单词出现。不再闪现"All caught up"。
+
+## 21. 修复（2026-07-29）：词组卡被空状态遮挡（`b38684f`，已部署）
+
+**现象**：学完一个单词后立即显示「六级」没有待复习的词了（实际上该词有词组卡要学）。
+
+**根因**：JSX 三元条件顺序错误。原顺序：
+```
+{!word ? (空状态) : phraseQueue.length > 0 ? (词组卡) : word ? (词卡)}
+```
+词组分支执行 `setWord(null)` + `setPhraseQueue(cards)` 后，`!word` 为 true →
+第一个条件命中 → 显示"All caught up"，**词组卡永远无法展示**。
+
+**修复**：调换渲染优先级：
+```
+{phraseQueue.length > 0 ? (词组卡) : !word ? (空状态) : word ? (词卡)}
+```
+词组卡有内容时优先展示，空状态仅在无词组且无单词时才出现。
