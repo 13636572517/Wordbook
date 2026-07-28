@@ -90,6 +90,7 @@ export default function HomeScreen() {
 
   const loadNext = useCallback(async () => {
     if (!user || !wordbook) return;
+    setLoading(true);
     setLoadError(null);
     const now = Date.now();
     try {
@@ -444,7 +445,7 @@ export default function HomeScreen() {
     );
   }
 
-  if (loading || !user || !wordbook) {
+  if ((loading && !word) || !user || !wordbook) {
     return (
       <View
         style={[
