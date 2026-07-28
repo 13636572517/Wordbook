@@ -49,6 +49,7 @@ export function selectQuizWordForWordbook(
   now: number,
   allowNew = true,
   newOnly = false,
+  skipWordId?: string | null,
 ): Word | null {
   const candidates = words.map((w, i) => toCandidate(w, progresses.get(w.id) ?? null, i, now));
   if (!allowNew) {
@@ -63,7 +64,7 @@ export function selectQuizWordForWordbook(
   const priorityIdx = priorityWordIds
     .map((id) => words.findIndex((w) => w.id === id))
     .filter((i) => i >= 0);
-  const chosen = selectQuizWord(candidates, priorityIdx, now, newOnly);
+  const chosen = selectQuizWord(candidates, priorityIdx, now, newOnly, skipWordId ? [words.findIndex((w) => w.id === skipWordId)].filter((i) => i >= 0) : undefined);
   return chosen ? words[chosen.id] : null;
 }
 
@@ -84,6 +85,7 @@ export async function getNextQuizWord(
   dailyNewWordGoal = Number.POSITIVE_INFINITY,
   todayNewWordCount = 0,
   newOnly = false,
+  skipWordId?: string | null,
 ): Promise<Word | null> {
   const words = await repo.getWordsByWordbook(wordbookId);
   // 新词按字母 A→Z 排序：保证从 a 开始顺序学习（到期复习仍按 due 优先，不受影响）
@@ -95,7 +97,7 @@ export async function getNextQuizWord(
     if (p) progresses.set(w.id, p);
   }
   const allowNew = todayNewWordCount < dailyNewWordGoal;
-  return selectQuizWordForWordbook(words, progresses, priorityWordIds, now, allowNew, newOnly);
+  return selectQuizWordForWordbook(words, progresses, priorityWordIds, now, allowNew, newOnly, skipWordId);
 }
 
 /**

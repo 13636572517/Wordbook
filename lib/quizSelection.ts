@@ -34,6 +34,7 @@ export function selectQuizWord<T extends QuizCandidate>(
   priority: number[],
   now: number,
   newOnly = false,
+  skipIdxs?: number[],
 ): T | null {
   if (words.length === 0) return null;
 
@@ -44,7 +45,9 @@ export function selectQuizWord<T extends QuizCandidate>(
       if (w) return w;
     }
 
-    const due = words.filter((w) => w.due <= now).sort((a, b) => a.due - b.due);
+    const due = words
+      .filter((w) => w.due <= now && (!skipIdxs || !skipIdxs.includes(w.id)))
+      .sort((a, b) => a.due - b.due);
 
     // 复习：按到期时间顺序（最久未复习的优先），确定性不随机
     if (due.length > 0) return due[0];

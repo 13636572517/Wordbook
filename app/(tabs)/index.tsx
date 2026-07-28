@@ -74,6 +74,8 @@ export default function HomeScreen() {
   const webAlert = useWebAlert();
   const activeWbRef = useRef<string | null>(null);
   const hasWordRef = useRef(false);
+  // 上一轮评过的词 ID：防止复习词评 Again 后立即重新插队，堵住新词
+  const lastWordIdRef = useRef<string | null>(null);
 
   // 复习测试流程
   const [reviewPhase, setReviewPhase] = useState<ReviewPhase>(null);
@@ -109,7 +111,7 @@ export default function HomeScreen() {
       }
       // 加练模式下绕过每日新词上限
       const inExtra = extraRemainingRef.current != null && extraRemainingRef.current > 0;
-      // 每日目标已完成且非加练模式：不再自动加载单词（包括复习词），
+      // 每日目标已完成且非加练/优先级模式：不再自动加载单词（包括复习词），
       // 显示"今日已学完"页面，复习通过"巩固测试"或"练习"Tab 进入
       if (!inExtra && todayCount >= goal && goal > 0 && prio.length === 0) {
         setWord(null);
@@ -123,7 +125,7 @@ export default function HomeScreen() {
       const effectiveCount = inExtra ? 0 : todayCount;
       // 加练模式只学新词，跳过复习词（学完后统一进入巩固测试）
       const [w, s] = await Promise.all([
-        getNextQuizWord(repo, user.id, wordbook.id, prio, now, effectiveGoal, effectiveCount, inExtra),
+        getNextQuizWord(repo, user.id, wordbook.id, prio, now, effectiveGoal, effectiveCount, inExtra, lastWordIdRef.current),
         repo.getWordbookStats(user.id, wordbook.id, now),
       ]);
       // 取当前词的已学习次数，用于「已掌握 x/3」展示
@@ -131,6 +133,8 @@ export default function HomeScreen() {
       setReps(prog?.repetitions ?? 0);
       // 复习词判定：有进度且有正确/错误记录 → 之前学过
       setIsReview(prog != null && (prog.correct + prog.wrong) > 0);
+      // 选中新词时清除跳过标记：上轮复习词阻塞已解除，新词队列可正常推进
+      if (w && !prog) lastWordIdRef.current = null;
       setWord(w);
       hasWordRef.current = w != null;
       setStats(s);
@@ -221,6 +225,9 @@ export default function HomeScreen() {
         });
       }
       consumePriorityId(word.id);
+      // 复习词评完后暂存：阻止 selectQuizWord 立即重新选中它（Again 会重置 due=now），
+      // 确保复习词每轮只出现一次，让新词有机会排到队首。下次选到新词时自动清除。
+      if (existing) lastWordIdRef.current = word.id;
       if (isNew && grade >= 1 && isCloud) {
         const full = word.phrases?.length ? word : await fetchWordDetail(word.id);
         const cards = (full.phrases ?? []).slice(0, 2).map((item) => ({
