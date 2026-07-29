@@ -683,6 +683,13 @@ export interface DailyProgress {
   correct_rate: number;
 }
 
+export interface StudentDailyDetail {
+  date: string;
+  summary: { new_words: number; review_words: number; total_attempts: number; correct_attempts: number; correct_rate: number };
+  practice_types: { activity_type: string; total: number; correct: number; correct_rate: number }[];
+  words: { word_id: number; word: string; translation: string; total: number; study_count: number; quiz_count: number; review_count: number; correct_count: number; wrong_count: number; last_grade: number; last_source: string; last_ts: number }[];
+}
+
 export interface TeacherWeakWord {
   word_id: number;
   word: string;
@@ -716,6 +723,11 @@ export async function fetchStudentDaily(
 ): Promise<DailyProgress[]> {
   const params = wordbookId ? `?wordbook_id=${wordbookId}` : '';
   return api<DailyProgress[]>(`/teacher/students/${userId}/daily/${params}`);
+}
+
+export async function fetchStudentDailyDetail(userId: number, date: string, wordbookId?: number): Promise<StudentDailyDetail> {
+  const params = wordbookId ? `?wordbook_id=${wordbookId}` : '';
+  return api<StudentDailyDetail>(`/teacher/students/${userId}/daily/${date}/detail/${params}`);
 }
 
 export async function fetchStudentWeakWords(

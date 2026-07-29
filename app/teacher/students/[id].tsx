@@ -200,7 +200,11 @@ export default function TeacherStudentDetailScreen() {
       {dataLoading ? (
         <ActivityIndicator size="large" color={colors.tint} style={{ marginTop: 40 }} />
       ) : section === 'daily' ? (
-        <DailySection daily={daily} colors={colors} />
+        <DailySection
+          daily={daily}
+          colors={colors}
+          onOpen={(date) => router.push({ pathname: '/teacher/students/[id]/daily/[date]' as any, params: { id: String(userId), date, wordbookId: selectedWb == null ? '' : String(selectedWb) } })}
+        />
       ) : section === 'weak' ? (
         <WeakSection words={weakWords} colors={colors} />
       ) : (
@@ -221,14 +225,14 @@ function MiniStat({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function DailySection({ daily, colors }: { daily: DailyProgress[]; colors: ReturnType<typeof useColors> }) {
+function DailySection({ daily, colors, onOpen }: { daily: DailyProgress[]; colors: ReturnType<typeof useColors>; onOpen: (date: string) => void }) {
   if (daily.length === 0) {
     return <EmptyHint text="暂无学习记录" colors={colors} />;
   }
   return (
     <ScrollView contentContainerStyle={sectionStyles.list}>
       {daily.map((d) => (
-        <View key={d.date} style={[sectionStyles.card, { backgroundColor: colors.card }]}>
+        <TouchableOpacity key={d.date} style={[sectionStyles.card, { backgroundColor: colors.card }]} onPress={() => onOpen(d.date)} activeOpacity={0.7}>
           <Text style={[sectionStyles.cardTitle, { color: colors.text }]}>{d.date}</Text>
           <View style={sectionStyles.row}>
             <Text style={[sectionStyles.label, { color: colors.subtitle }]}>
@@ -250,7 +254,7 @@ function DailySection({ daily, colors }: { daily: DailyProgress[]; colors: Retur
               ]}
             />
           </View>
-        </View>
+        </TouchableOpacity>
       ))}
     </ScrollView>
   );

@@ -8,6 +8,7 @@ import json
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta
 
 from django.db import connection
 from django.db.models import Count, Q, Sum
@@ -782,7 +783,7 @@ class TeacherStudentDailyView(APIView):
                     DATE_FORMAT(FROM_UNIXTIME(sl.ts / 1000), '%%Y-%%m-%%d') as date,
                     COUNT(*) as total,
                     SUM(CASE WHEN sl.is_new THEN 1 ELSE 0 END) as new_count,
-                    SUM(CASE WHEN sl.grade >= 3 THEN 1 ELSE 0 END) as correct_count
+                    SUM(CASE WHEN sl.grade >= 1 THEN 1 ELSE 0 END) as correct_count
                 FROM study_logs sl
                 {clause}
                 GROUP BY date
@@ -804,6 +805,60 @@ class TeacherStudentDailyView(APIView):
             })
 
         return Response(result)
+
+
+class TeacherStudentDailyDetailView(APIView):
+    """某学员指定自然日的聚合学习明细（仅教师/管理员）。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id: int, date: str):
+        if not is_teacher_or_admin(request.user.id):
+            return Response({"error": "仅教师/管理员可查看"}, status=403)
+        try:
+            day = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return Response({"error": "date 必须为 YYYY-MM-DD"}, status=400)
+        start = int(day.timestamp() * 1000)
+        end = int((day + timedelta(days=1)).timestamp() * 1000)
+        logs = StudyLog.objects.filter(user_id=user_id, ts__gte=start, ts__lt=end).select_related("word").order_by("ts")
+        wb_id = request.query_params.get("wordbook_id")
+        if wb_id:
+            logs = logs.filter(wordbook_id=int(wb_id))
+
+        words, practice = {}, {}
+        new_words, review_words = set(), set()
+        total = correct = 0
+        for log in logs:
+            total += 1
+            ok = log.grade >= 1
+            correct += int(ok)
+            if log.is_new:
+                new_words.add(log.word_id)
+            elif log.source in ("study", "review"):
+                review_words.add(log.word_id)
+            item = words.setdefault(log.word_id, {
+                "word_id": log.word_id, "word": log.word.word, "translation": log.word.translation,
+                "total": 0, "study_count": 0, "quiz_count": 0, "review_count": 0,
+                "correct_count": 0, "wrong_count": 0, "last_grade": log.grade,
+                "last_source": log.source, "last_ts": log.ts,
+            })
+            item["total"] += 1
+            item[f"{log.source}_count"] += 1
+            item["correct_count" if ok else "wrong_count"] += 1
+            item["last_grade"], item["last_source"], item["last_ts"] = log.grade, log.source, log.ts
+            if log.source == "quiz":
+                kind = log.activity_type or "unknown"
+                entry = practice.setdefault(kind, {"activity_type": kind, "total": 0, "correct": 0})
+                entry["total"] += 1
+                entry["correct"] += int(ok)
+        practice_types = [{**item, "correct_rate": round(item["correct"] / item["total"], 3)} for item in practice.values()]
+        return Response({
+            "date": date,
+            "summary": {"new_words": len(new_words), "review_words": len(review_words), "total_attempts": total, "correct_attempts": correct, "correct_rate": round(correct / total, 3) if total else 0},
+            "practice_types": practice_types,
+            "words": sorted(words.values(), key=lambda item: item["last_ts"], reverse=True),
+        })
 
 
 class TeacherStudentWeakWordsView(APIView):

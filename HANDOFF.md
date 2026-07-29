@@ -648,3 +648,9 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 - 根因：`useDailyProgress` 只在页面获得焦点时读取统计。学习页保持聚焦时完成到期词，服务端 `due` 已归零，但主页进度条、弹窗仍展示进入页面时的旧数字。
 - `useDailyProgress` 现在返回 `{ progress, refresh }`；`app/(tabs)/index.tsx` 每次 `loadNext` 完成后调用 `refresh`，让待复习、新词与练习计数在当前会话内重新取数。
 - 生产排查确认：admin 的“六级”待复习记录最终为 0；此前显示的 6/7 是前端快照，不是数据库残留任务。
+
+## 25. 功能（2026-07-29）：学员单日学习明细
+
+- 教师端每日进度卡可进入单日详情，按单词聚合展示学习/练习/复习次数、正确/错误次数与最后活动。
+- 新增 `StudyLog.activity_type`（迁移 `vocab.0006_studylog_activity_type`）；新练习记录默写、选择、词组默写、词组填空或例句选择，历史空值归为“历史练习（题型未知）”。
+- 新增教师接口 `/api/teacher/students/<user_id>/daily/<YYYY-MM-DD>/detail/`，并将教师日正确率统一为 `grade >= 1`。

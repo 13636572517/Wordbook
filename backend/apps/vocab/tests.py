@@ -3,6 +3,8 @@
 """
 
 import time
+from datetime import datetime
+from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
@@ -256,5 +258,34 @@ class UserSettingsAPITest(TestCase):
     def test_invalid_goal_rejected(self):
         resp = self.client.post("/api/settings/", {"daily_new_word_goal": 0}, format="json")
         self.assertEqual(resp.status_code, 400)
+
+
+class TeacherStudentDailyDetailAPITest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {make_test_token(99)}")
+        self.wb = Wordbook.objects.create(owner_id=None, name="高中", level="highschool", type="system", created_at=0)
+        self.first = Word.objects.create(word="alpha", translation="阿尔法")
+        self.second = Word.objects.create(word="beta", translation="贝塔")
+        day = int(datetime(2026, 7, 29, 9, 0).timestamp() * 1000)
+        StudyLog.objects.create(user_id=7, wordbook=self.wb, word=self.first, grade=2, ts=day, source="study", is_new=True)
+        StudyLog.objects.create(user_id=7, wordbook=self.wb, word=self.first, grade=0, ts=day + 1, source="quiz", activity_type="dictation")
+        StudyLog.objects.create(user_id=7, wordbook=self.wb, word=self.first, grade=2, ts=day + 2, source="quiz", activity_type="dictation")
+        StudyLog.objects.create(user_id=7, wordbook=self.wb, word=self.second, grade=1, ts=day + 3, source="quiz")
+
+    @patch("apps.vocab.views.is_teacher_or_admin", return_value=True)
+    def test_returns_word_and_practice_type_aggregates(self, _teacher):
+        resp = self.client.get(f"/api/teacher/students/7/daily/2026-07-29/detail/?wordbook_id={self.wb.id}")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["summary"]["correct_attempts"], 3)
+        self.assertEqual(body["words"][0]["word"], "beta")
+        alpha = next(item for item in body["words"] if item["word"] == "alpha")
+        self.assertEqual(alpha["total"], 3)
+        self.assertEqual(alpha["correct_count"], 2)
+        self.assertEqual(alpha["wrong_count"], 1)
+        types = {item["activity_type"]: item for item in body["practice_types"]}
+        self.assertEqual(types["dictation"]["total"], 2)
+        self.assertEqual(types["unknown"]["total"], 1)
         resp = self.client.post("/api/settings/", {"daily_quiz_goal": 0}, format="json")
         self.assertEqual(resp.status_code, 400)
