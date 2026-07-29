@@ -27,6 +27,7 @@ import { speakWord } from '@/lib/speech';
 import { fetchDuePhraseCards, fetchWordDetail, recordPhraseProgress, type PhraseProgressCard } from '@/lib/data/httpRepo';
 import QuizRunner from '@/components/QuizRunner';
 import { useWebAlert } from '@/components/WebAlert';
+import { advanceExtraPractice } from '@/lib/extraPractice';
 import { useDailyProgress } from '@/components/useDailyProgress';
 import MarqueeBar from '@/components/MarqueeBar';
 import DailyPlanModal from '@/components/DailyPlanModal';
@@ -69,6 +70,7 @@ export default function HomeScreen() {
   const extraRemainingRef = useRef<number | null>(null);
   // 加练模式：追踪本轮学过的词 ID，结束时用于单独巩固
   const extraWordIdsRef = useRef<Set<string>>(new Set());
+  const extraReviewPendingRef = useRef(false);
   // 巩固测试是否已完成（完成后不再显示“开始巩固测试”按钮）
   const [reviewCompleted, setReviewCompleted] = useState(false);
   const [cardKey, setCardKey] = useState(0);
@@ -237,6 +239,15 @@ export default function HomeScreen() {
       // 复习词评完后暂存：阻止 selectQuizWord 立即重新选中它（Again 会重置 due=now），
       // 确保复习词每轮只出现一次，让新词有机会排到队首。下次选到新词时自动清除。
       if (existing) lastWordIdRef.current = word.id;
+      const extraResult = extraRemainingRef.current != null
+        ? advanceExtraPractice(extraRemainingRef.current, isNew)
+        : null;
+      if (extraResult && isNew) {
+        extraWordIdsRef.current.add(word.id);
+        extraRemainingRef.current = extraResult.remaining;
+        setExtraRemaining(extraResult.remaining);
+        extraReviewPendingRef.current = extraResult.finished;
+      }
       if (isNew && grade >= 1 && isCloud) {
         const full = word.phrases?.length ? word : await fetchWordDetail(word.id);
         const cards = (full.phrases ?? []).slice(0, 2).map((item) => ({
@@ -249,17 +260,10 @@ export default function HomeScreen() {
           return;
         }
       }
-      // 加练模式：新词评分后递减剩余数
-      if (isNew && extraRemainingRef.current != null && extraRemainingRef.current > 0) {
-        extraWordIdsRef.current.add(word.id);
-        const next = extraRemainingRef.current - 1;
-        extraRemainingRef.current = next;
-        setExtraRemaining(next);
-        // 本批加练完成 → 自动进入巩固流程
-        if (next <= 0) {
-          startExtraReview();
-          return;
-        }
+      if (extraResult?.finished) {
+        extraReviewPendingRef.current = false;
+        startExtraReview();
+        return;
       }
       // 必须 await：确保下一词选词（读取进度）发生在 setProgress 的 PUT
       // 落库完成之后，否则进度缓存会读到旧值，刚学过的词仍被当作新词
@@ -272,7 +276,14 @@ export default function HomeScreen() {
     if (!wordbook || phraseQueue.length === 0) return;
     await recordPhraseProgress(wordbook.id, phraseQueue[0], grade);
     setPhraseQueue((queue) => queue.slice(1));
-    if (phraseQueue.length <= 1) await loadNext();
+    if (phraseQueue.length <= 1) {
+      if (extraReviewPendingRef.current) {
+        extraReviewPendingRef.current = false;
+        startExtraReview();
+      } else {
+        await loadNext();
+      }
+    }
   };
 
   // 获取今日新学单词的完整数据
@@ -304,6 +315,7 @@ export default function HomeScreen() {
           text: '确定',
           onPress: () => {
             extraWordIdsRef.current = new Set();
+            extraReviewPendingRef.current = false;
             extraRemainingRef.current = 10;
             setExtraRemaining(10);
             loadNext();
