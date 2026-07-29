@@ -71,6 +71,7 @@ export const DEFAULT_EF = 2.5;
 // Study log source: where a grade originated. 'study' is the default (learning
 // tab), 'quiz' from the daily quiz module, 'review' from the review module.
 export type StudyLogSource = 'study' | 'quiz' | 'review';
+export type PracticeActivityType = 'dictation' | 'choice' | 'phrase' | 'phrase-blank' | 'sentence-choice';
 
 /**
  * A single study-log entry. Local-first: persisted in AsyncStorage / memory
@@ -85,6 +86,7 @@ export interface StudyLog {
   ts: number;
   source?: StudyLogSource;
   isNew?: boolean;
+  activityType?: PracticeActivityType;
 }
 
 /**

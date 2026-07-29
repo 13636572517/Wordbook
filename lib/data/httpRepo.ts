@@ -10,7 +10,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CreateWordbookInput, Repository, ListStudyLogsOpts } from './repo';
-import type { ID, User, UserWordProgress, Word, Wordbook, WordDefinition, WordExample, WordPhrase, StudyLog } from './types';
+import type { ID, User, UserWordProgress, Word, Wordbook, WordDefinition, WordExample, WordPhrase, StudyLog, PracticeActivityType } from './types';
 import {
   DAILY_GOAL_DEFAULT,
   DAILY_QUIZ_GOAL_DEFAULT,
@@ -454,6 +454,7 @@ export const httpRepo: Repository = {
       ts: item.ts,
       source: item.source,
       isNew: !!item.is_new,
+      activityType: item.activity_type ?? undefined,
     }));
   },
 
@@ -567,7 +568,7 @@ export async function fetchStats(wordbookId?: ID) {
 
 /** 批量上报学习日志 */
 export async function postStudyLogs(
-  logs: { wordbookId: ID; wordId: ID; grade: number; ts: number; source?: string; isNew?: boolean }[],
+  logs: { wordbookId: ID; wordId: ID; grade: number; ts: number; source?: string; isNew?: boolean; activityType?: PracticeActivityType }[],
 ): Promise<void> {
   await api('/study-logs/', {
     method: 'POST',
@@ -579,6 +580,7 @@ export async function postStudyLogs(
         ts: l.ts,
         source: l.source || 'study',
         is_new: !!l.isNew,
+        activity_type: l.activityType,
       })),
     }),
   });

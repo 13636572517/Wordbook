@@ -194,7 +194,7 @@ export default function QuizRunner({
     await reviewWord(repo, user.id, wordbook.id, wordId, grade, now);
     if (isCloud) {
       await postStudyLogs([
-        { wordbookId: wordbook.id, wordId, grade, ts: now, source: 'quiz' },
+        { wordbookId: wordbook.id, wordId, grade, ts: now, source: 'quiz', activityType: q?.type },
       ]);
     } else {
       await repo.addStudyLog({
@@ -204,6 +204,7 @@ export default function QuizRunner({
         grade,
         ts: now,
         source: 'quiz',
+        activityType: q?.type,
       });
     }
   };

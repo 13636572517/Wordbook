@@ -55,7 +55,7 @@ class ProgressUpdateItem(serializers.Serializer):
 class StudyLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudyLog
-        fields = ["id", "user_id", "wordbook_id", "word_id", "grade", "ts", "source", "is_new"]
+        fields = ["id", "user_id", "wordbook_id", "word_id", "grade", "ts", "source", "is_new", "activity_type"]
         read_only_fields = ["id", "user_id"]
 
 

@@ -165,18 +165,22 @@ class StudyLogListAPITest(TestCase):
         )
         self.word = Word.objects.create(word="hello", translation="int. 你好")
 
-    def test_post_stores_source_and_is_new(self):
+    def test_post_stores_source_is_new_and_activity_type(self):
         now_ms = int(time.time() * 1000)
         resp = self.client.post("/api/study-logs/", {
             "logs": [
                 {"wordbook_id": self.wb.id, "word_id": self.word.id, "grade": 4,
-                 "ts": now_ms, "source": "quiz", "is_new": True},
+                 "ts": now_ms, "source": "quiz", "is_new": True,
+                 "activity_type": "dictation"},
             ]
         }, format="json")
         self.assertEqual(resp.status_code, 201)
         log = StudyLog.objects.get()
         self.assertEqual(log.source, "quiz")
         self.assertTrue(log.is_new)
+        self.assertEqual(log.activity_type, "dictation")
+        listed = self.client.get("/api/study-logs/list/").json()
+        self.assertEqual(listed[0]["activity_type"], "dictation")
 
     def test_list_filter_by_source_and_is_new(self):
         now_ms = int(time.time() * 1000)

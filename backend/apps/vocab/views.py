@@ -360,6 +360,7 @@ class StudyLogView(APIView):
                 ts=log["ts"],
                 source=log.get("source", "study"),
                 is_new=bool(log.get("is_new", False)),
+                activity_type=log.get("activity_type") or None,
             ))
         StudyLog.objects.bulk_create(objs)
         return Response({"created": len(objs)}, status=201)

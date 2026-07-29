@@ -173,6 +173,10 @@ class StudyLog(models.Model):
         default=False, db_index=True,
         help_text="本次是否为新学单词(用于每日新词上限统计)",
     )
+    activity_type = models.CharField(
+        max_length=32, null=True, blank=True,
+        help_text="练习题型；历史记录为空",
+    )
 
     class Meta:
         db_table = "study_logs"
