@@ -2,7 +2,7 @@ import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
 import { repo } from '@/lib/data';
 import { getWordbookStats } from '@/lib/data/stats';
-import { getDailyNewWordGoal, setDailyNewWordGoal } from '@/lib/data/settings';
+import { getDailySettings, setDailySettings } from '@/lib/data/settings';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
@@ -35,6 +35,8 @@ export default function ProfileScreen() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [goalInput, setGoalInput] = useState('20');
+  const [quizGoalInput, setQuizGoalInput] = useState('20');
+  const [showDailyPlan, setShowDailyPlan] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,8 +80,10 @@ export default function ProfileScreen() {
     useCallback(() => {
       if (!user) return;
       (async () => {
-        const g = await getDailyNewWordGoal(user.id);
-        setGoalInput(String(g));
+        const settings = await getDailySettings(user.id);
+        setGoalInput(String(settings.dailyNewWordGoal));
+        setQuizGoalInput(String(settings.dailyQuizGoal));
+        setShowDailyPlan(settings.showDailyPlan);
       })();
     }, [user]),
   );
@@ -89,8 +93,15 @@ export default function ProfileScreen() {
     if (!user) return;
     const n = parseInt(text, 10);
     if (Number.isFinite(n) && n >= 0) {
-      await setDailyNewWordGoal(user.id, n);
+      await setDailySettings(user.id, { dailyNewWordGoal: n });
     }
+  };
+
+  const handleQuizGoalChange = async (text: string) => {
+    setQuizGoalInput(text);
+    if (!user) return;
+    const n = parseInt(text, 10);
+    if (Number.isFinite(n) && n > 0) await setDailySettings(user.id, { dailyQuizGoal: n });
   };
 
   const handleSwitch = (id: string) => {
@@ -213,6 +224,12 @@ export default function ProfileScreen() {
             placeholder="20"
             placeholderTextColor={colors.subtitle}
           />
+          <Text style={[styles.goalLabel, { color: colors.text, marginTop: 16 }]}>每日练习目标</Text>
+          <TextInput style={[styles.goalInput, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]} value={quizGoalInput} onChangeText={handleQuizGoalChange} keyboardType="numeric" placeholder="20" placeholderTextColor={colors.subtitle} />
+          <TouchableOpacity onPress={() => { const next = !showDailyPlan; setShowDailyPlan(next); if (user) setDailySettings(user.id, { showDailyPlan: next }); }} style={styles.planToggle}>
+            <Text style={[styles.goalLabel, { color: colors.text }]}>显示每日计划</Text>
+            <Text style={{ color: showDailyPlan ? colors.tint : colors.subtitle }}>{showDailyPlan ? '开启' : '关闭'}</Text>
+          </TouchableOpacity>
         </View>
         <Text style={[styles.goalNote, { color: colors.subtitle }]}>
           全局生效，所有词本共用
@@ -531,6 +548,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 8,
   },
+  planToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
   accountRow: {
     flexDirection: 'row',
     alignItems: 'center',

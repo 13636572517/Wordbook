@@ -620,3 +620,14 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 {phraseQueue.length > 0 ? (词组卡) : !word ? (空状态) : word ? (词卡)}
 ```
 词组卡有内容时优先展示，空状态仅在无词组且无单词时才出现。
+
+## 22. 开发中（2026-07-29）：学习进度面板与智能练习
+
+分支：`codex/learning-progress-smart-practice`，尚未合并或部署。
+
+- 新增 `UserSettings.daily_quiz_goal`（默认 20）与 `show_daily_plan`（默认 true），迁移为 `vocab.0005_usersettings_daily_quiz_goal_and_show_daily_plan`。`/api/settings/` 支持三个字段的部分更新，旧客户端只提交 `daily_new_word_goal` 不会覆盖新字段。
+- 新增 `lib/dailyProgress.ts` 与 `lib/smartPick.ts`。智能练习优先今天新学未练、到期词、薄弱词，再补其他已学词；题型配额为默写/选择/例句/词组填空 30/30/20/20，内容不足时退回基础题型。
+- 学习页已接入移动进度条、每日计划弹窗和完成动效；桌面网页根布局有可收起进度浮层。练习页进入时自动启动智能会话，原有题型按钮会切回自定义练习。
+- 设置页新增每日练习目标和每日计划开关。
+- 已验证：`tsc --noEmit`、`backend/manage.py test apps.vocab.tests.UserSettingsAPITest`、`npm run build:web:cloud`。纯逻辑测试通过编译到 `/private/tmp/wordhoard-ts-tests` 后运行：`smartPick`、`dailyProgress`。
+- 部署前必须在生产执行 `python manage.py migrate`（应用 0005），再执行官方 `bash /opt/learning/deploy.sh` 并重启 `learning.service`。

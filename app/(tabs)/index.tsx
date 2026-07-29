@@ -15,7 +15,7 @@ import useColors from '@/components/useColors';
 import { repo, httpRepo, postStudyLogs } from '@/lib/data';
 import type { Word } from '@/lib/data';
 import { getNextQuizWord, getTodayNewWordCount } from '@/lib/data/quiz';
-import { getDailyNewWordGoal } from '@/lib/data/settings';
+import { getDailyNewWordGoal, getDailySettings } from '@/lib/data/settings';
 import { reviewWord } from '@/lib/data/review';
 import type { WordbookStats } from '@/lib/data/stats';
 import { Grade } from '@/lib/sm2';
@@ -77,6 +77,7 @@ export default function HomeScreen() {
   const { user, wordbook } = useSession();
   const dailyProgress = useDailyProgress();
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showDailyPlan, setShowDailyPlan] = useState(true);
   const webAlert = useWebAlert();
   const activeWbRef = useRef<string | null>(null);
   const hasWordRef = useRef(false);
@@ -206,6 +207,10 @@ export default function HomeScreen() {
   useEffect(() => {
     if (dailyProgress?.allDone) setShowConfetti(true);
   }, [dailyProgress?.allDone]);
+
+  useEffect(() => {
+    if (user) getDailySettings(user.id).then((settings) => setShowDailyPlan(settings.showDailyPlan)).catch(() => undefined);
+  }, [user]);
 
   const handleGrade = async (grade: Grade) => {
     if (word && user && wordbook) {
@@ -504,7 +509,7 @@ export default function HomeScreen() {
         </View>
       </View>
       <MarqueeBar progress={dailyProgress} />
-      <DailyPlanModal userId={user.id} progress={dailyProgress} enabled />
+      <DailyPlanModal userId={user.id} progress={dailyProgress} enabled={showDailyPlan} />
       <Confetti visible={showConfetti} onEnd={() => setShowConfetti(false)} />
 
       {stats && (
