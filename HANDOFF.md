@@ -632,3 +632,4 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 - 已验证：`tsc --noEmit`、`backend/manage.py test apps.vocab.tests.UserSettingsAPITest`、`npm run build:web:cloud`。纯逻辑测试通过编译到 `/private/tmp/wordhoard-ts-tests` 后运行：`smartPick`、`dailyProgress`。
 - 生产已执行 `vocab.0005_usersettings_daily_quiz_goal_and_show_daily_plan`，`learning.service` 状态为 `active`，前端 bundle 为 4,139,410 bytes。
 - 加练剩余数修复：计数在词组卡跳转前递减；若第 10 个新词有词组卡，先完成词组再自动进入本轮巩固，避免遗漏最后一词或跳入普通学习队列。
+- 生产事故修复（2026-07-29）：上线后 `/api/settings/` 返回 500。原因是无 `DJANGO_SETTINGS_MODULE` 的 `manage.py migrate` 只迁移了服务器本地 SQLite，生产 `learning.service` 实际连接 MySQL，`user_settings` 缺少 0005 的两个字段。已对 MySQL 执行 `DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/bin/python manage.py migrate vocab` 并核验设置序列化恢复。今后生产迁移和 `showmigrations` 必须显式使用 `config.settings.prod`，不能使用默认 `manage.py` 配置。
