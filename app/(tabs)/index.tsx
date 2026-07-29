@@ -31,7 +31,6 @@ import { advanceExtraPractice } from '@/lib/extraPractice';
 import { useDailyProgress } from '@/components/useDailyProgress';
 import MarqueeBar from '@/components/MarqueeBar';
 import DailyPlanModal from '@/components/DailyPlanModal';
-import Confetti from '@/components/Confetti';
 
 const ENGLISH = getLanguageByCode('en');
 // 云端模式判定改用运行时比较（repo===httpRepo），不再依赖编译期
@@ -78,7 +77,6 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, wordbook } = useSession();
   const dailyProgress = useDailyProgress();
-  const [showConfetti, setShowConfetti] = useState(false);
   const [showDailyPlan, setShowDailyPlan] = useState(true);
   const webAlert = useWebAlert();
   const activeWbRef = useRef<string | null>(null);
@@ -205,10 +203,6 @@ export default function HomeScreen() {
     void startReview; void startExtraReview; void onReviewFlip; void onReviewKnow;
     void onChoiceDone; void onDictDone; void exitReview; void fetchTodayReviewWords;
   }, []);
-
-  useEffect(() => {
-    if (dailyProgress?.allDone) setShowConfetti(true);
-  }, [dailyProgress?.allDone]);
 
   useEffect(() => {
     if (user) getDailySettings(user.id).then((settings) => setShowDailyPlan(settings.showDailyPlan)).catch(() => undefined);
@@ -522,7 +516,6 @@ export default function HomeScreen() {
       </View>
       <MarqueeBar progress={dailyProgress} />
       <DailyPlanModal userId={user.id} progress={dailyProgress} enabled={showDailyPlan} />
-      <Confetti visible={showConfetti} onEnd={() => setShowConfetti(false)} />
 
       {stats && (
         <View style={styles.statsRow}>

@@ -12,7 +12,6 @@ import 'react-native-reanimated';
 
 import { SessionProvider } from '@/components/SessionProvider';
 import { WebAlertProvider } from '@/components/WebAlert';
-import ProgressWidget from '@/components/ProgressWidget';
 import { useColorScheme } from '@/components/useColorScheme';
 
 export { ErrorBoundary } from 'expo-router';
@@ -58,7 +57,6 @@ function RootLayoutNav() {
     >
       <SessionProvider>
         <WebAlertProvider>
-        <ProgressWidget />
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen
