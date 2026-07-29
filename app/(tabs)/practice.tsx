@@ -1,5 +1,10 @@
 import { postStudyLogs, repo } from '@/lib/data';
 import { getRecentWords } from '@/lib/data/review-scope';
+import { getStudiedWords } from '@/lib/data/review-scope';
+import { getWeakWordIds } from '@/lib/data/weak';
+import { getDailySettings } from '@/lib/data/settings';
+import { buildSmartPracticePlan, type SmartQuestionPlan } from '@/lib/smartPick';
+import { startOfDayTs } from '@/lib/data/types';
 import { reviewWord } from '@/lib/data/review';
 import { type RangeKind } from '@/lib/quizgen';
 import { getLanguageByCode } from '@/lib/languages';
@@ -57,6 +62,7 @@ export default function PracticeScreen() {
   const { user, wordbook } = useSession();
 
   const [mode, setMode] = useState<Mode>('menu');
+  const [smartPlan, setSmartPlan] = useState<SmartQuestionPlan[]>([]);
 
   // 每日测试 设置（默认「全部已学」——只测已学过的词）
   const [quizRange, setQuizRange] = useState<QuizRange>('studied');
@@ -89,6 +95,7 @@ export default function PracticeScreen() {
   const startQuiz = (type?: QuizType) => {
     if (type) setQuizTypes([type]);
     if (quizTypes.length === 0 && !type) return;
+    setSmartPlan([]);
     setMode('quiz');
   };
 
@@ -143,10 +150,32 @@ export default function PracticeScreen() {
   // 从练习子页返回菜单时，确保复习数据被清掉
   useFocusEffect(
     useCallback(() => {
-      setMode('menu');
-      setReviewWords(null);
-      setReviewFlipped(false);
-    }, []),
+      if (!user || !wordbook) return;
+      let active = true;
+      (async () => {
+        const now = Date.now();
+        const [settings, words, logs, weakWordIds] = await Promise.all([
+          getDailySettings(user.id),
+          getStudiedWords(repo, user.id, wordbook.id),
+          repo.listStudyLogs(user.id, wordbook.id, { sinceTs: startOfDayTs(now) }),
+          getWeakWordIds(repo, user.id, wordbook.id, now),
+        ]);
+        const dueWordIds = (await Promise.all(words.map(async (word) => {
+          const progress = await repo.getProgress(user.id, wordbook.id, word.id);
+          return progress && progress.due <= now ? word.id : null;
+        }))).filter((id): id is string => id != null);
+        const plan = buildSmartPracticePlan({
+          words,
+          todayNewWordIds: logs.filter((log) => log.source === 'study' && log.isNew).map((log) => log.wordId),
+          todayQuizWordIds: logs.filter((log) => log.source === 'quiz').map((log) => log.wordId),
+          dueWordIds,
+          weakWordIds,
+          goal: settings.dailyQuizGoal,
+        });
+        if (active) { setSmartPlan(plan); setMode(plan.length > 0 ? 'quiz' : 'menu'); }
+      })();
+      return () => { active = false; };
+    }, [user, wordbook]),
   );
 
   const title = (
@@ -164,9 +193,10 @@ export default function PracticeScreen() {
       >
         {title}
         <QuizRunner
-          range={range}
-          opts={opts}
-          types={quizTypes}
+          range={smartPlan.length > 0 ? 'custom' : range}
+          opts={smartPlan.length > 0 ? { wordIds: [...new Set(smartPlan.map((item) => item.wordId))] } : opts}
+          types={smartPlan.length > 0 ? ['dictation'] : quizTypes}
+          questionPlan={smartPlan.length > 0 ? smartPlan : undefined}
           onExit={() => setMode('menu')}
         />
       </View>

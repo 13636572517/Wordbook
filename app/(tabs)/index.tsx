@@ -27,6 +27,10 @@ import { speakWord } from '@/lib/speech';
 import { fetchDuePhraseCards, fetchWordDetail, recordPhraseProgress, type PhraseProgressCard } from '@/lib/data/httpRepo';
 import QuizRunner from '@/components/QuizRunner';
 import { useWebAlert } from '@/components/WebAlert';
+import { useDailyProgress } from '@/components/useDailyProgress';
+import MarqueeBar from '@/components/MarqueeBar';
+import DailyPlanModal from '@/components/DailyPlanModal';
+import Confetti from '@/components/Confetti';
 
 const ENGLISH = getLanguageByCode('en');
 // 云端模式判定改用运行时比较（repo===httpRepo），不再依赖编译期
@@ -71,6 +75,8 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, wordbook } = useSession();
+  const dailyProgress = useDailyProgress();
+  const [showConfetti, setShowConfetti] = useState(false);
   const webAlert = useWebAlert();
   const activeWbRef = useRef<string | null>(null);
   const hasWordRef = useRef(false);
@@ -196,6 +202,10 @@ export default function HomeScreen() {
     void startReview; void startExtraReview; void onReviewFlip; void onReviewKnow;
     void onChoiceDone; void onDictDone; void exitReview; void fetchTodayReviewWords;
   }, []);
+
+  useEffect(() => {
+    if (dailyProgress?.allDone) setShowConfetti(true);
+  }, [dailyProgress?.allDone]);
 
   const handleGrade = async (grade: Grade) => {
     if (word && user && wordbook) {
@@ -493,6 +503,9 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      <MarqueeBar progress={dailyProgress} />
+      <DailyPlanModal userId={user.id} progress={dailyProgress} enabled />
+      <Confetti visible={showConfetti} onEnd={() => setShowConfetti(false)} />
 
       {stats && (
         <View style={styles.statsRow}>

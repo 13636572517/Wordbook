@@ -20,6 +20,7 @@ import {
   type RangeKind,
   type SentenceChoiceQuiz,
 } from '@/lib/quizgen';
+import type { SmartQuestionPlan } from '@/lib/smartPick';
 import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -51,6 +52,7 @@ interface QuizRunnerProps {
   range: RangeKind;
   opts?: { days?: number; wordIds?: string[] };
   types: QuizType[];
+  questionPlan?: SmartQuestionPlan[];
   onExit?: (correct?: number, total?: number) => void;
 }
 
@@ -71,6 +73,7 @@ export default function QuizRunner({
   range,
   opts,
   types,
+  questionPlan,
   onExit,
 }: QuizRunnerProps) {
   const colors = useColors();
@@ -133,7 +136,22 @@ export default function QuizRunner({
       // 例句选择：用词本内所有词作为干扰项池（无需额外 API 调用）
       const distractorPool = quizWords.map((w) => w.word);
 
-      for (const w of quizWords) {
+      if (questionPlan) {
+        const byId = new Map(quizWords.map((word) => [word.id, word]));
+        for (const item of questionPlan) {
+          const w = byId.get(item.wordId);
+          if (!w) continue;
+          if (item.type === 'dictation') pool.push(genDictation([w]));
+          else if (item.type === 'choice') pool.push(genChoice(quizWords, w));
+          else if (item.type === 'phrase-blank') {
+            const q = genPhraseBlank(w);
+            if (q) pool.push(q);
+          } else {
+            const q = genSentenceChoiceAll(w, distractorPool)[0];
+            if (q) pool.push(q);
+          }
+        }
+      } else for (const w of quizWords) {
         for (const t of types) {
           if (t === 'dictation') {
             pool.push(genDictation([w]));
@@ -162,7 +180,7 @@ export default function QuizRunner({
     return () => {
       cancelled = true;
     };
-  }, [user, wordbook]);
+  }, [user, wordbook, range, opts, types, questionPlan]);
 
   // 判定后：对=Good(2)/错=Again(0)，复用 reviewWord + 写 studylog(source:'quiz')
   const recordGrade = async (wordId: string, correct: boolean) => {
