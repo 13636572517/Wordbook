@@ -16,14 +16,17 @@ export default function StudentDailyDetailScreen() {
   const router = useRouter();
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const returnToStudent = () => {
+    router.replace({ pathname: '/teacher/students/[id]' as any, params: { id: String(id) } });
+  };
   useEffect(() => {
     fetchStudentDailyDetail(Number(id), date, wordbookId ? Number(wordbookId) : undefined).then(setDetail).catch(() => setError(true));
   }, [id, date, wordbookId]);
   if (!detail && !error) return <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}><ActivityIndicator color={colors.tint} style={{ marginTop: 60 }} /></View>;
-  if (error || !detail) return <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}><TouchableOpacity onPress={() => router.back()} style={styles.back}><FontAwesome name="arrow-left" size={16} color={colors.tint} /></TouchableOpacity><Text style={[styles.empty, { color: colors.subtitle }]}>学习明细加载失败</Text></View>;
+  if (error || !detail) return <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}><TouchableOpacity onPress={returnToStudent} style={styles.back}><FontAwesome name="arrow-left" size={16} color={colors.tint} /></TouchableOpacity><Text style={[styles.empty, { color: colors.subtitle }]}>学习明细加载失败</Text></View>;
   const s = detail.summary;
   return <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-    <View style={styles.header}><TouchableOpacity onPress={() => router.back()} style={styles.back}><FontAwesome name="arrow-left" size={16} color={colors.tint} /></TouchableOpacity><View><Text style={[styles.title, { color: colors.text }]}>{detail.date}</Text><Text style={[styles.sub, { color: colors.subtitle }]}>学习明细</Text></View></View>
+    <View style={styles.header}><TouchableOpacity onPress={returnToStudent} style={styles.back}><FontAwesome name="arrow-left" size={16} color={colors.tint} /></TouchableOpacity><View><Text style={[styles.title, { color: colors.text }]}>{detail.date}</Text><Text style={[styles.sub, { color: colors.subtitle }]}>学习明细</Text></View></View>
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.grid}>{[['新词', s.new_words], ['复习词', s.review_words], ['作答', s.total_attempts], ['正确率', `${Math.round(s.correct_rate * 100)}%`]].map(([label, value]) => <View key={String(label)} style={[styles.stat, { backgroundColor: colors.card }]}><Text style={[styles.statValue, { color: colors.text }]}>{value}</Text><Text style={[styles.sub, { color: colors.subtitle }]}>{label}</Text></View>)}</View>
       <Text style={[styles.section, { color: colors.subtitle }]}>练习题型</Text>
