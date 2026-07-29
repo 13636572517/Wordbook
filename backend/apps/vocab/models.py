@@ -186,10 +186,12 @@ class StudyLog(models.Model):
 
 
 class UserSettings(models.Model):
-    """每用户全局设置（当前仅每日新词上限）。"""
+    """每用户全局学习设置。"""
 
     user_id = models.BigIntegerField(db_index=True, unique=True)
     daily_new_word_goal = models.IntegerField(default=20, help_text="每日新学单词数上限")
+    daily_quiz_goal = models.IntegerField(default=20, help_text="每日智能练习题数目标")
+    show_daily_plan = models.BooleanField(default=True, help_text="是否显示每日学习计划")
 
     class Meta:
         db_table = "user_settings"

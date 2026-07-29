@@ -214,22 +214,43 @@ class UserSettingsAPITest(TestCase):
         resp = self.client.get("/api/settings/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["daily_new_word_goal"], 20)
+        self.assertEqual(resp.json()["daily_quiz_goal"], 20)
+        self.assertTrue(resp.json()["show_daily_plan"])
 
-        # 更新
+        # 只更新新词目标不应覆盖新增设置
         resp = self.client.post("/api/settings/", {"daily_new_word_goal": 35}, format="json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["daily_new_word_goal"], 35)
+        self.assertEqual(resp.json()["daily_quiz_goal"], 20)
+        self.assertTrue(resp.json()["show_daily_plan"])
+
+        # 可独立更新练习目标和每日计划开关
+        resp = self.client.post(
+            "/api/settings/",
+            {"daily_quiz_goal": 12, "show_daily_plan": False},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["daily_new_word_goal"], 35)
+        self.assertEqual(resp.json()["daily_quiz_goal"], 12)
+        self.assertFalse(resp.json()["show_daily_plan"])
 
         # 再读应持久化
         resp = self.client.get("/api/settings/")
         self.assertEqual(resp.json()["daily_new_word_goal"], 35)
+        self.assertEqual(resp.json()["daily_quiz_goal"], 12)
+        self.assertFalse(resp.json()["show_daily_plan"])
 
         # 隔离：另一用户仍是默认
         other = APIClient()
         other.credentials(HTTP_AUTHORIZATION=f"Bearer {make_test_token(8)}")
         resp = other.get("/api/settings/")
         self.assertEqual(resp.json()["daily_new_word_goal"], 20)
+        self.assertEqual(resp.json()["daily_quiz_goal"], 20)
+        self.assertTrue(resp.json()["show_daily_plan"])
 
     def test_invalid_goal_rejected(self):
         resp = self.client.post("/api/settings/", {"daily_new_word_goal": 0}, format="json")
+        self.assertEqual(resp.status_code, 400)
+        resp = self.client.post("/api/settings/", {"daily_quiz_goal": 0}, format="json")
         self.assertEqual(resp.status_code, 400)

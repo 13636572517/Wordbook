@@ -11,7 +11,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CreateWordbookInput, Repository, ListStudyLogsOpts } from './repo';
 import type { ID, User, UserWordProgress, Word, Wordbook, WordDefinition, WordExample, WordPhrase, StudyLog } from './types';
-import { DAILY_GOAL_DEFAULT } from './settings';
+import {
+  DAILY_GOAL_DEFAULT,
+  DAILY_QUIZ_GOAL_DEFAULT,
+  type DailySettings,
+} from './settings';
 
 // --- 配置 ---
 const API_BASE = __DEV__
@@ -469,16 +473,32 @@ export const httpRepo: Repository = {
 
   // 每日新词上限（云端）：走 /settings/ 接口，按 user 隔离。
   async getDailyNewWordGoal(userId: ID): Promise<number> {
-    const data = await api<any>('/settings/');
-    return Number(data.daily_new_word_goal) || DAILY_GOAL_DEFAULT;
+    return (await fetchDailySettings(userId)).dailyNewWordGoal;
   },
   async setDailyNewWordGoal(userId: ID, n: number): Promise<void> {
-    await api('/settings/', {
-      method: 'POST',
-      body: JSON.stringify({ daily_new_word_goal: n }),
-    });
+    await updateDailySettings(userId, { dailyNewWordGoal: n });
   },
 };
+
+export async function fetchDailySettings(_userId: ID): Promise<DailySettings> {
+  const data = await api<any>('/settings/');
+  return {
+    dailyNewWordGoal: Number(data.daily_new_word_goal) || DAILY_GOAL_DEFAULT,
+    dailyQuizGoal: Number(data.daily_quiz_goal) || DAILY_QUIZ_GOAL_DEFAULT,
+    showDailyPlan: data.show_daily_plan !== false,
+  };
+}
+
+export async function updateDailySettings(
+  _userId: ID,
+  update: Partial<DailySettings>,
+): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (update.dailyNewWordGoal != null) body.daily_new_word_goal = update.dailyNewWordGoal;
+  if (update.dailyQuizGoal != null) body.daily_quiz_goal = update.dailyQuizGoal;
+  if (update.showDailyPlan != null) body.show_daily_plan = update.showDailyPlan;
+  await api('/settings/', { method: 'POST', body: JSON.stringify(body) });
+}
 
 // --- 额外 API（非 Repository 接口， Phase B 增强）---
 

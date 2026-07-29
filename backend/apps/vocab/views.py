@@ -442,33 +442,53 @@ class PhraseProgressView(APIView):
 
 
 class UserSettingsView(APIView):
-    """每用户设置：每日新词上限。"""
+    """每用户学习设置，支持独立更新每个字段。"""
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user_id = request.user.id
         obj, _ = UserSettings.objects.get_or_create(
-            user_id=user_id, defaults={"daily_new_word_goal": 20}
+            user_id=user_id,
+            defaults={
+                "daily_new_word_goal": 20,
+                "daily_quiz_goal": 20,
+                "show_daily_plan": True,
+            },
         )
         return Response(UserSettingsSerializer(obj).data)
 
     def post(self, request):
         user_id = request.user.id
-        goal = request.data.get("daily_new_word_goal")
-        if goal is None:
-            return Response({"error": "daily_new_word_goal 不能为空"}, status=400)
-        try:
-            goal = int(goal)
-        except (TypeError, ValueError):
-            return Response({"error": "daily_new_word_goal 必须为整数"}, status=400)
-        if goal <= 0:
-            return Response({"error": "daily_new_word_goal 必须大于 0"}, status=400)
+        data = request.data
+        updates = {}
+        for field, label in (
+            ("daily_new_word_goal", "daily_new_word_goal"),
+            ("daily_quiz_goal", "daily_quiz_goal"),
+        ):
+            if field not in data:
+                continue
+            try:
+                value = int(data[field])
+            except (TypeError, ValueError):
+                return Response({"error": f"{label} 必须为整数"}, status=400)
+            if value <= 0:
+                return Response({"error": f"{label} 必须大于 0"}, status=400)
+            updates[field] = value
 
-        obj, _ = UserSettings.objects.update_or_create(
-            user_id=user_id,
-            defaults={"daily_new_word_goal": goal},
-        )
+        if "show_daily_plan" in data:
+            value = data["show_daily_plan"]
+            if not isinstance(value, bool):
+                return Response({"error": "show_daily_plan 必须为布尔值"}, status=400)
+            updates["show_daily_plan"] = value
+
+        if not updates:
+            return Response({"error": "至少提供一个设置项"}, status=400)
+
+        obj, _ = UserSettings.objects.get_or_create(user_id=user_id)
+        for field, value in updates.items():
+            setattr(obj, field, value)
+        obj.save(update_fields=list(updates))
         return Response(UserSettingsSerializer(obj).data)
 
 

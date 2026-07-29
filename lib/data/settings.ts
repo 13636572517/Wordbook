@@ -1,38 +1,78 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// 每日新词上限（每用户全局）。
-// 本地优先：用 AsyncStorage 按 user 隔离存储；
-// 云端模式：走 httpRepo -> /settings/ 接口（UserSettings 表）。
 const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 
 export const DAILY_GOAL_DEFAULT = 20;
-const keyFor = (userId: string) => `wb_daily_goal_${userId}`;
+export const DAILY_QUIZ_GOAL_DEFAULT = 20;
+export interface DailySettings {
+  dailyNewWordGoal: number;
+  dailyQuizGoal: number;
+  showDailyPlan: boolean;
+}
 
-// 可注入存储（测试用）。默认使用真实 AsyncStorage。仅取 getItem/setItem 两个
-// 方法，便于在 Node 下用内存实现替换，保持测试 RN-free。
+export const DEFAULT_DAILY_SETTINGS: DailySettings = {
+  dailyNewWordGoal: DAILY_GOAL_DEFAULT,
+  dailyQuizGoal: DAILY_QUIZ_GOAL_DEFAULT,
+  showDailyPlan: true,
+};
+
+const legacyGoalKeyFor = (userId: string) => `wb_daily_goal_${userId}`;
+const settingsKeyFor = (userId: string) => `wb_daily_settings_${userId}`;
+
 type Storage = Pick<typeof AsyncStorage, 'getItem' | 'setItem'>;
 let store: Storage = AsyncStorage;
 
-/** 仅用于测试：替换底层存储实现。 */
 export function setStoreForTesting(s: Storage): void {
   store = s;
 }
 
-export async function getDailyNewWordGoal(userId: string): Promise<number> {
+function positiveInt(value: unknown, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+function normalizeSettings(value: Partial<DailySettings> | null | undefined): DailySettings {
+  return {
+    dailyNewWordGoal: positiveInt(value?.dailyNewWordGoal, DAILY_GOAL_DEFAULT),
+    dailyQuizGoal: positiveInt(value?.dailyQuizGoal, DAILY_QUIZ_GOAL_DEFAULT),
+    showDailyPlan: value?.showDailyPlan !== false,
+  };
+}
+
+export async function getDailySettings(userId: string): Promise<DailySettings> {
   if (USE_CLOUD) {
-    const { httpRepo } = await import('./httpRepo');
-    return httpRepo.getDailyNewWordGoal(userId);
+    const { fetchDailySettings } = await import('./httpRepo');
+    return fetchDailySettings(userId);
   }
-  const raw = await store.getItem(keyFor(userId));
-  if (raw == null) return DAILY_GOAL_DEFAULT;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : DAILY_GOAL_DEFAULT;
+  const raw = await store.getItem(settingsKeyFor(userId));
+  if (raw != null) {
+    try {
+      return normalizeSettings(JSON.parse(raw));
+    } catch {
+      // A malformed local value should never prevent the learning screen opening.
+    }
+  }
+  const legacyGoal = await store.getItem(legacyGoalKeyFor(userId));
+  return normalizeSettings({ dailyNewWordGoal: legacyGoal == null ? undefined : Number(legacyGoal) });
+}
+
+export async function setDailySettings(
+  userId: string,
+  update: Partial<DailySettings>,
+): Promise<void> {
+  if (USE_CLOUD) {
+    const { updateDailySettings } = await import('./httpRepo');
+    await updateDailySettings(userId, update);
+    return;
+  }
+  const next = normalizeSettings({ ...(await getDailySettings(userId)), ...update });
+  await store.setItem(settingsKeyFor(userId), JSON.stringify(next));
+}
+
+export async function getDailyNewWordGoal(userId: string): Promise<number> {
+  return (await getDailySettings(userId)).dailyNewWordGoal;
 }
 
 export async function setDailyNewWordGoal(userId: string, n: number): Promise<void> {
-  if (USE_CLOUD) {
-    const { httpRepo } = await import('./httpRepo');
-    return httpRepo.setDailyNewWordGoal(userId, n);
-  }
-  await store.setItem(keyFor(userId), String(n));
+  await setDailySettings(userId, { dailyNewWordGoal: n });
 }

@@ -1,6 +1,10 @@
 import assert from 'node:assert';
 import {
+  DAILY_QUIZ_GOAL_DEFAULT,
+  DEFAULT_DAILY_SETTINGS,
+  getDailySettings,
   getDailyNewWordGoal,
+  setDailySettings,
   setDailyNewWordGoal,
   DAILY_GOAL_DEFAULT,
   setStoreForTesting,
@@ -30,6 +34,20 @@ const mock = {
   await setDailyNewWordGoal('u2', 5);
   assert.strictEqual(await getDailyNewWordGoal('u1'), 15, 'u1 unaffected by u2 change');
   assert.strictEqual(await getDailyNewWordGoal('u2'), 5, 'u2 reads its own goal');
+
+  // 新增每日设置有稳定默认值，并按用户隔离保存
+  assert.deepStrictEqual(
+    await getDailySettings('u4'),
+    DEFAULT_DAILY_SETTINGS,
+    'daily settings default to documented values',
+  );
+  assert.strictEqual(DAILY_QUIZ_GOAL_DEFAULT, 20, 'quiz default is 20');
+  await setDailySettings('u4', { dailyQuizGoal: 12, showDailyPlan: false });
+  assert.deepStrictEqual(
+    await getDailySettings('u4'),
+    { dailyNewWordGoal: 20, dailyQuizGoal: 12, showDailyPlan: false },
+    'partial daily settings update preserves the new-word goal',
+  );
 
   // 非法/缺失值回落默认
   mem.set('wb_daily_goal_u3', 'not-a-number');
