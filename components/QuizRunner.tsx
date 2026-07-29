@@ -219,6 +219,15 @@ export default function QuizRunner({
     else setIdx(idx + 1);
   };
 
+  const q = questions[idx];
+
+  // 必须在所有条件 return 前调用，避免 loading -> quiz 切换时 Hook 数量变化。
+  useEffect(() => {
+    if (q && q.type !== 'dictation' && q.type !== 'phrase-blank') {
+      speakWord(q.word.word, ENGLISH);
+    }
+  }, [idx, q]);
+
   if (phase === 'loading') {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
@@ -245,15 +254,6 @@ export default function QuizRunner({
   if (phase === 'done') {
     return <DoneScreen results={results} onExit={onExit} />;
   }
-
-  const q = questions[idx];
-
-  // 非中翻英题型自动播放单词发音（dictation/phrase-blank 是看中文写英文，不能播放）
-  useEffect(() => {
-    if (q && q.type !== 'dictation' && q.type !== 'phrase-blank') {
-      speakWord(q.word.word, ENGLISH);
-    }
-  }, [idx, q]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
