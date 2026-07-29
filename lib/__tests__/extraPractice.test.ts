@@ -1,11 +1,14 @@
 import assert from 'node:assert';
 import { advanceExtraPractice } from '../extraPractice';
+import { nextExtraBatchStep } from '../extraPractice';
 
 assert.deepStrictEqual(
   advanceExtraPractice(10, true),
   { remaining: 9, finished: false },
   'a newly learned extra word decrements the remaining count even when another card follows',
 );
+assert.strictEqual(nextExtraBatchStep(true), 'decision', 'a completed extra batch waits for an explicit decision');
+assert.strictEqual(nextExtraBatchStep(false), 'continue', 'an unfinished extra batch continues learning');
 assert.deepStrictEqual(
   advanceExtraPractice(1, true),
   { remaining: 0, finished: true },

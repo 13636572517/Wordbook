@@ -27,7 +27,7 @@ import { speakWord } from '@/lib/speech';
 import { fetchDuePhraseCards, fetchWordDetail, recordPhraseProgress, type PhraseProgressCard } from '@/lib/data/httpRepo';
 import QuizRunner from '@/components/QuizRunner';
 import { useWebAlert } from '@/components/WebAlert';
-import { advanceExtraPractice } from '@/lib/extraPractice';
+import { advanceExtraPractice, nextExtraBatchStep } from '@/lib/extraPractice';
 import { useDailyProgress } from '@/components/useDailyProgress';
 import MarqueeBar from '@/components/MarqueeBar';
 import DailyPlanModal from '@/components/DailyPlanModal';
@@ -66,6 +66,7 @@ export default function HomeScreen() {
   const [isReview, setIsReview] = useState(false);
   // 加练模式：null=未激活，number=本轮剩余新词数（每轮10个，可多轮）
   const [extraRemaining, setExtraRemaining] = useState<number | null>(null);
+  const [extraDecisionPending, setExtraDecisionPending] = useState(false);
   const extraRemainingRef = useRef<number | null>(null);
   // 加练模式：追踪本轮学过的词 ID，结束时用于单独巩固
   const extraWordIdsRef = useRef<Set<string>>(new Set());
@@ -256,7 +257,7 @@ export default function HomeScreen() {
       }
       if (extraResult?.finished) {
         extraReviewPendingRef.current = false;
-        startExtraReview();
+        setExtraDecisionPending(nextExtraBatchStep(true) === 'decision');
         return;
       }
       // 必须 await：确保下一词选词（读取进度）发生在 setProgress 的 PUT
@@ -273,7 +274,7 @@ export default function HomeScreen() {
     if (phraseQueue.length <= 1) {
       if (extraReviewPendingRef.current) {
         extraReviewPendingRef.current = false;
-        startExtraReview();
+        setExtraDecisionPending(nextExtraBatchStep(true) === 'decision');
       } else {
         await loadNext();
       }
@@ -310,6 +311,7 @@ export default function HomeScreen() {
           onPress: () => {
             extraWordIdsRef.current = new Set();
             extraReviewPendingRef.current = false;
+            setExtraDecisionPending(false);
             extraRemainingRef.current = 10;
             setExtraRemaining(10);
             loadNext();
@@ -428,9 +430,7 @@ export default function HomeScreen() {
     setTodayReviewWords([]);
     // 加练巩固结束：清理加练状态，不标记日常巩固已完成
     if (wasExtra) {
-      extraWordIdsRef.current = new Set();
-      setExtraRemaining(null);
-      extraRemainingRef.current = null;
+      setExtraDecisionPending(true);
     } else {
       // 日常巩固完成后标记，不再重复显示"开始巩固测试"
       setReviewCompleted(true);
@@ -671,8 +671,25 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {!reviewPhase && extraDecisionPending && (
+        <View style={styles.emptyContainer}>
+          <FontAwesome name="flag-checkered" size={44} color={colors.tint} />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>本轮加练完成</Text>
+          <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>10 个新词已经学完，接下来怎么安排？</Text>
+          <TouchableOpacity style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]} onPress={startExtraReview}>
+            <Text style={[styles.reviewStartText, { color: '#0D0D0D' }]}>开始巩固复习</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.extraBtn, { borderColor: colors.tint }]} onPress={confirmExtraPractice}>
+            <Text style={[styles.extraBtnText, { color: colors.tint }]}>再学习 10 个新词</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { setExtraDecisionPending(false); extraWordIdsRef.current = new Set(); setExtraRemaining(null); extraRemainingRef.current = null; loadNext(); }}>
+            <Text style={[styles.hint, { color: colors.subtitle }]}>暂时结束本轮</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* --- 正常学习模式 --- */}
-      {!reviewPhase && phraseQueue.length > 0 ? (
+      {!reviewPhase && !extraDecisionPending && phraseQueue.length > 0 ? (
         <View style={styles.cardArea}>
           <Text style={[styles.masteryHint, { color: colors.subtitle }]}>词组学习</Text>
           <View style={[styles.phraseCard, { backgroundColor: colors.card }]}>
@@ -681,7 +698,7 @@ export default function HomeScreen() {
           </View>
           <View style={styles.gradeRow}>{GRADES.map((g) => <TouchableOpacity key={g.grade} style={[styles.gradeButton, { backgroundColor: g.color }]} onPress={() => handlePhraseGrade(g.grade)}><Text style={styles.gradeText}>{g.label}</Text></TouchableOpacity>)}</View>
         </View>
-      ) : !reviewPhase && !word ? (
+      ) : !reviewPhase && !extraDecisionPending && !word ? (
         <ScrollView
           style={styles.emptyScroll}
           contentContainerStyle={styles.emptyContainer}
@@ -726,7 +743,7 @@ export default function HomeScreen() {
             </>
           )}
         </ScrollView>
-      ) : !reviewPhase && word ? (
+      ) : !reviewPhase && !extraDecisionPending && word ? (
         <View style={styles.cardArea}>
           {extraRemaining != null && extraRemaining > 0 && (
             <View style={styles.extraBadge}>

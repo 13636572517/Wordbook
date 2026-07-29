@@ -6,3 +6,7 @@ export function advanceExtraPractice(
   const next = remaining - 1;
   return { remaining: next, finished: next === 0 };
 }
+
+export function nextExtraBatchStep(finished: boolean): 'decision' | 'continue' {
+  return finished ? 'decision' : 'continue';
+}
