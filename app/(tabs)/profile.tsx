@@ -35,7 +35,6 @@ export default function ProfileScreen() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [goalInput, setGoalInput] = useState('20');
-  const [quizGoalInput, setQuizGoalInput] = useState('20');
   const [showDailyPlan, setShowDailyPlan] = useState(true);
 
   useFocusEffect(
@@ -82,7 +81,6 @@ export default function ProfileScreen() {
       (async () => {
         const settings = await getDailySettings(user.id);
         setGoalInput(String(settings.dailyNewWordGoal));
-        setQuizGoalInput(String(settings.dailyQuizGoal));
         setShowDailyPlan(settings.showDailyPlan);
       })();
     }, [user]),
@@ -95,13 +93,6 @@ export default function ProfileScreen() {
     if (Number.isFinite(n) && n >= 0) {
       await setDailySettings(user.id, { dailyNewWordGoal: n });
     }
-  };
-
-  const handleQuizGoalChange = async (text: string) => {
-    setQuizGoalInput(text);
-    if (!user) return;
-    const n = parseInt(text, 10);
-    if (Number.isFinite(n) && n > 0) await setDailySettings(user.id, { dailyQuizGoal: n });
   };
 
   const handleSwitch = (id: string) => {
@@ -224,8 +215,6 @@ export default function ProfileScreen() {
             placeholder="20"
             placeholderTextColor={colors.subtitle}
           />
-          <Text style={[styles.goalLabel, { color: colors.text, marginTop: 16 }]}>每日练习目标</Text>
-          <TextInput style={[styles.goalInput, { backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text }]} value={quizGoalInput} onChangeText={handleQuizGoalChange} keyboardType="numeric" placeholder="20" placeholderTextColor={colors.subtitle} />
           <TouchableOpacity onPress={() => { const next = !showDailyPlan; setShowDailyPlan(next); if (user) setDailySettings(user.id, { showDailyPlan: next }); }} style={styles.planToggle}>
             <Text style={[styles.goalLabel, { color: colors.text }]}>显示每日计划</Text>
             <Text style={{ color: showDailyPlan ? colors.tint : colors.subtitle }}>{showDailyPlan ? '开启' : '关闭'}</Text>

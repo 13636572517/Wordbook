@@ -1,21 +1,17 @@
-import { postStudyLogs, repo } from '@/lib/data';
-import { getRecentWords } from '@/lib/data/review-scope';
+import { repo } from '@/lib/data';
 import { getStudiedWords } from '@/lib/data/review-scope';
 import { getWeakWordIds } from '@/lib/data/weak';
-import { getDailySettings } from '@/lib/data/settings';
-import { buildSmartPracticePlan, type SmartQuestionPlan } from '@/lib/smartPick';
+import { getDailySettings, setDailySettings } from '@/lib/data/settings';
+import { selectSmartPracticeWordIds } from '@/lib/smartPick';
+import { normalizePracticeGoal } from '@/lib/practiceSettings';
 import { startOfDayTs } from '@/lib/data/types';
-import { reviewWord } from '@/lib/data/review';
 import { type RangeKind } from '@/lib/quizgen';
-import { getLanguageByCode } from '@/lib/languages';
 import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
-import FlashCard from '@/components/FlashCard';
 import QuizRunner from '@/components/QuizRunner';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import React, { useCallback, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -24,25 +20,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import type { Grade } from '@/lib/sm2';
-import type { Word } from '@/lib/data';
-
-// 云端模式开关（与 lib/data/index.ts 保持一致）
-const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
-const ENGLISH = getLanguageByCode('en');
-
-const REVIEW_GRADES: { grade: Grade; label: string; color: string }[] = [
-  { grade: 0, label: 'Again', color: '#E5484D' },
-  { grade: 1, label: 'Hard', color: '#F5A623' },
-  { grade: 2, label: 'Good', color: '#30A46C' },
-  { grade: 3, label: 'Easy', color: '#3B82F6' },
-];
 
 type QuizType = 'dictation' | 'choice' | 'phrase' | 'phrase-blank' | 'sentence-choice';
-type QuizRange = 'studied' | 'weak' | 'recent';
-type Mode = 'menu' | 'quiz' | 'review';
+type QuizRange = 'smart' | 'studied' | 'weak' | 'recent';
+type Mode = 'menu' | 'quiz';
 
+const PRACTICE_GOALS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 const RANGES: { key: QuizRange; label: string }[] = [
+  { key: 'smart', label: '智能选择' },
   { key: 'studied', label: '全部已学' },
   { key: 'weak', label: '薄弱词' },
   { key: 'recent', label: '最近7天' },
@@ -54,358 +39,170 @@ const TYPES: { key: QuizType; label: string; icon: React.ComponentProps<typeof F
   { key: 'phrase-blank', label: '词组填空', icon: 'puzzle-piece', desc: '语境中填单词' },
   { key: 'sentence-choice', label: '例句选择', icon: 'comment', desc: '例句中四选一' },
 ];
-const REVIEW_DAYS = [7, 14, 30];
+
+function rangeParams(range: Exclude<QuizRange, 'smart'>): { range: RangeKind; opts?: { days?: number } } {
+  if (range === 'weak') return { range: 'weak' };
+  if (range === 'recent') return { range: 'recent', opts: { days: 7 } };
+  return { range: 'studied' };
+}
 
 export default function PracticeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, wordbook } = useSession();
-
   const [mode, setMode] = useState<Mode>('menu');
-  const [smartPlan, setSmartPlan] = useState<SmartQuestionPlan[]>([]);
+  const [quizRange, setQuizRange] = useState<QuizRange>('smart');
+  const [practiceGoal, setPracticeGoal] = useState(20);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [goalMenuOpen, setGoalMenuOpen] = useState(false);
+  const [startingType, setStartingType] = useState<QuizType | null>(null);
+  const [activeType, setActiveType] = useState<QuizType>('dictation');
+  const [activeRange, setActiveRange] = useState<RangeKind>('studied');
+  const [activeOpts, setActiveOpts] = useState<{ days?: number; wordIds?: string[] }>();
 
-  // 每日测试 设置（默认「全部已学」——只测已学过的词）
-  const [quizRange, setQuizRange] = useState<QuizRange>('studied');
-  const [quizTypes, setQuizTypes] = useState<QuizType[]>([
-    'dictation',
-    'choice',
-    'phrase',
-  ]);
-
-  // 复习 设置
-  const [reviewDays, setReviewDays] = useState<number>(7);
-  const [reviewWords, setReviewWords] = useState<Word[] | null>(null);
-  const [reviewIdx, setReviewIdx] = useState(0);
-  const [reviewFlipped, setReviewFlipped] = useState(false);
-  const [reviewLoading, setReviewLoading] = useState(false);
-
-  // 范围 → pickRange 参数。三种范围都只覆盖「当前词本已学过的词」：
-  //  - studied：全部已学  - weak：已学中的薄弱词  - recent：最近 7 天学过的词
-  const rangeParams = (): { range: RangeKind; opts?: { days?: number } } => {
-    switch (quizRange) {
-      case 'studied':
-        return { range: 'studied' };
-      case 'weak':
-        return { range: 'weak' };
-      case 'recent':
-        return { range: 'recent', opts: { days: 7 } };
+  useEffect(() => {
+    if (!user) {
+      setSettingsLoading(false);
+      return;
     }
-  };
+    let active = true;
+    setSettingsLoading(true);
+    getDailySettings(user.id).then((settings) => {
+      if (active) setPracticeGoal(normalizePracticeGoal(settings.dailyQuizGoal));
+    }).catch(() => {}).finally(() => {
+      if (active) setSettingsLoading(false);
+    });
+    return () => { active = false; };
+  }, [user]);
 
-  const startQuiz = (type?: QuizType) => {
-    if (type) setQuizTypes([type]);
-    if (quizTypes.length === 0 && !type) return;
-    setSmartPlan([]);
-    setMode('quiz');
-  };
-
-  const startReview = async () => {
-    if (!user || !wordbook) return;
-    setReviewLoading(true);
-    const words = await getRecentWords(
-      repo,
-      user.id,
-      wordbook.id,
-      reviewDays,
-      Date.now(),
-    );
-    setReviewWords(words);
-    setReviewIdx(0);
-    setReviewFlipped(false);
-    setReviewLoading(false);
-    setMode('review');
-  };
-
-  const recordReview = async (wordId: string, grade: Grade) => {
-    if (!user || !wordbook) return;
+  const buildSmartWordIds = async (): Promise<string[]> => {
+    if (!user || !wordbook) return [];
     const now = Date.now();
-    await reviewWord(repo, user.id, wordbook.id, wordId, grade, now);
-    if (USE_CLOUD) {
-      await postStudyLogs([{ wordbookId: wordbook.id, wordId, grade, ts: now, source: 'review' }]);
-    } else {
-      await repo.addStudyLog({
-        userId: user.id,
-        wordbookId: wordbook.id,
-        wordId,
-        grade,
-        ts: now,
-        source: 'review',
-      });
+    const [words, logs, weakWordIds] = await Promise.all([
+      getStudiedWords(repo, user.id, wordbook.id),
+      repo.listStudyLogs(user.id, wordbook.id, { sinceTs: startOfDayTs(now) }),
+      getWeakWordIds(repo, user.id, wordbook.id, now),
+    ]);
+    const dueWordIds = (await Promise.all(words.map(async (word) => {
+      const progress = await repo.getProgress(user.id, wordbook.id, word.id);
+      return progress && progress.due <= now ? word.id : null;
+    }))).filter((id): id is string => id != null);
+    return selectSmartPracticeWordIds({
+      words,
+      todayNewWordIds: logs.filter((log) => log.source === 'study' && log.isNew).map((log) => log.wordId),
+      todayQuizWordIds: logs.filter((log) => log.source === 'quiz' || log.source === 'review').map((log) => log.wordId),
+      dueWordIds,
+      weakWordIds,
+      goal: practiceGoal,
+    });
+  };
+
+  const startQuiz = async (type: QuizType) => {
+    setStartingType(type);
+    try {
+      setActiveType(type);
+      if (quizRange === 'smart') {
+        setActiveRange('custom');
+        setActiveOpts({ wordIds: await buildSmartWordIds() });
+      } else {
+        const next = rangeParams(quizRange);
+        setActiveRange(next.range);
+        setActiveOpts(next.opts);
+      }
+      setMode('quiz');
+    } finally {
+      setStartingType(null);
     }
   };
 
-  const handleReviewGrade = async (grade: Grade) => {
-    if (!reviewWords) return;
-    const w = reviewWords[reviewIdx];
-    await recordReview(w.id, grade);
-    if (reviewIdx + 1 >= reviewWords.length) {
-      setMode('menu');
-      setReviewWords(null);
-    } else {
-      setReviewIdx(reviewIdx + 1);
-      setReviewFlipped(false);
-    }
+  const updatePracticeGoal = async (goal: number) => {
+    setPracticeGoal(goal);
+    setGoalMenuOpen(false);
+    if (user) await setDailySettings(user.id, { dailyQuizGoal: goal });
   };
 
-  // 从练习子页返回菜单时，确保复习数据被清掉
-  useFocusEffect(
-    useCallback(() => {
-      if (!user || !wordbook) return;
-      let active = true;
-      (async () => {
-        const now = Date.now();
-        const [settings, words, logs, weakWordIds] = await Promise.all([
-          getDailySettings(user.id),
-          getStudiedWords(repo, user.id, wordbook.id),
-          repo.listStudyLogs(user.id, wordbook.id, { sinceTs: startOfDayTs(now) }),
-          getWeakWordIds(repo, user.id, wordbook.id, now),
-        ]);
-        const dueWordIds = (await Promise.all(words.map(async (word) => {
-          const progress = await repo.getProgress(user.id, wordbook.id, word.id);
-          return progress && progress.due <= now ? word.id : null;
-        }))).filter((id): id is string => id != null);
-        const plan = buildSmartPracticePlan({
-          words,
-          todayNewWordIds: logs.filter((log) => log.source === 'study' && log.isNew).map((log) => log.wordId),
-          todayQuizWordIds: logs.filter((log) => log.source === 'quiz').map((log) => log.wordId),
-          dueWordIds,
-          weakWordIds,
-          goal: settings.dailyQuizGoal,
-        });
-        if (active) { setSmartPlan(plan); setMode(plan.length > 0 ? 'quiz' : 'menu'); }
-      })();
-      return () => { active = false; };
-    }, [user, wordbook]),
-  );
-
-  const title = (
-    <Text style={[styles.title, { color: colors.text }]}>练习</Text>
-  );
+  const title = <Text style={[styles.title, { color: colors.text }]}>练习</Text>;
 
   if (mode === 'quiz') {
-    const { range, opts } = rangeParams();
     return (
-      <View
-        style={[
-          styles.root,
-          { backgroundColor: colors.background, paddingTop: insets.top },
-        ]}
-      >
+      <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         {title}
         <QuizRunner
-          range={smartPlan.length > 0 ? 'custom' : range}
-          opts={smartPlan.length > 0 ? { wordIds: [...new Set(smartPlan.map((item) => item.wordId))] } : opts}
-          types={smartPlan.length > 0 ? ['dictation'] : quizTypes}
-          questionPlan={smartPlan.length > 0 ? smartPlan : undefined}
+          range={activeRange}
+          opts={activeOpts}
+          types={[activeType]}
+          limit={practiceGoal}
           onExit={() => setMode('menu')}
         />
       </View>
     );
   }
 
-  if (mode === 'review') {
-    const done = reviewWords != null && reviewIdx >= reviewWords.length;
-    return (
-      <View
-        style={[
-          styles.root,
-          { backgroundColor: colors.background, paddingTop: insets.top },
-        ]}
-      >
-        {title}
-        <View style={styles.reviewBody}>
-          {reviewLoading ? (
-            <ActivityIndicator size="large" color={colors.tint} />
-          ) : reviewWords == null || reviewWords.length === 0 ? (
-            <View style={styles.emptyBlock}>
-              <Text style={[styles.emptyText, { color: colors.subtitle }]}>
-                最近 {reviewDays} 天暂无学习记录
-              </Text>
-              <TouchableOpacity
-                style={[styles.backBtn, { borderColor: colors.border }]}
-                onPress={() => {
-                  setMode('menu');
-                  setReviewWords(null);
-                }}
-              >
-                <Text style={[styles.backText, { color: colors.text }]}>
-                  返回
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : done ? (
-            <View style={styles.emptyBlock}>
-              <FontAwesome
-                name="check-circle"
-                size={48}
-                color="#30A46C"
-                style={{ marginBottom: 12 }}
-              />
-              <Text style={[styles.emptyText, { color: colors.text }]}>
-                完成！本次复习了 {reviewWords.length} 个词
-              </Text>
-              <TouchableOpacity
-                style={[styles.backBtn, { borderColor: colors.border }]}
-                onPress={() => {
-                  setMode('menu');
-                  setReviewWords(null);
-                }}
-              >
-                <Text style={[styles.backText, { color: colors.text }]}>
-                  返回
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <Text style={[styles.reviewCount, { color: colors.subtitle }]}>
-                第 {reviewIdx + 1} / {reviewWords.length} 词
-              </Text>
-              <FlashCard
-                key={reviewIdx}
-                word={reviewWords[reviewIdx]}
-                language={ENGLISH}
-                onFlip={setReviewFlipped}
-              />
-              {reviewFlipped ? (
-                <View style={styles.gradeRow}>
-                  {REVIEW_GRADES.map((g) => (
-                    <TouchableOpacity
-                      key={g.grade}
-                      style={[styles.gradeButton, { backgroundColor: g.color }]}
-                      onPress={() => handleReviewGrade(g.grade)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.gradeText}>{g.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : (
-                <Text style={[styles.hint, { color: colors.pinyin }]}>
-                  点击卡片翻面查看释义
-                </Text>
-              )}
-            </>
-          )}
-        </View>
-      </View>
-    );
-  }
-
-  // 菜单：题型卡片 + 复习
   return (
-    <View
-      style={[
-        styles.root,
-        { backgroundColor: colors.background, paddingTop: insets.top },
-      ]}
-    >
+    <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {title}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* 范围选择 */}
-        <Text style={[styles.scopeHint, { color: colors.pinyin }]}>
-          测试「{wordbook?.name ?? '当前词本'}」中已学过的单词
-        </Text>
-        <View style={styles.chipRow}>
-          {RANGES.map((r) => (
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <Text style={[styles.scopeHint, { color: colors.pinyin }]}>练习「{wordbook?.name ?? '当前词本'}」中已学过的单词</Text>
+        <View style={styles.settingRow}>
+          <View>
+            <Text style={[styles.settingLabel, { color: colors.text }]}>本次练习数量</Text>
+            <Text style={[styles.settingHint, { color: colors.subtitle }]}>所有题型均按此数量选词</Text>
+          </View>
+          <View>
             <TouchableOpacity
-              key={r.key}
-              style={[
-                styles.chip,
-                {
-                  backgroundColor:
-                    quizRange === r.key ? colors.tint : colors.card,
-                  borderColor: colors.border,
-                },
-              ]}
-              onPress={() => setQuizRange(r.key)}
+              accessibilityRole="button"
+              style={[styles.goalSelect, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => setGoalMenuOpen((open) => !open)}
+            >
+              <Text style={[styles.goalSelectText, { color: colors.text }]}>{practiceGoal} 词</Text>
+              <FontAwesome name="chevron-down" size={13} color={colors.subtitle} />
+            </TouchableOpacity>
+            {goalMenuOpen && (
+              <View style={[styles.goalMenu, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                {PRACTICE_GOALS.map((goal) => (
+                  <TouchableOpacity key={goal} style={styles.goalOption} onPress={() => updatePracticeGoal(goal)}>
+                    <Text style={[styles.goalOptionText, { color: goal === practiceGoal ? colors.tint : colors.text }]}>{goal} 词</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>选词范围</Text>
+        <View style={styles.chipRow}>
+          {RANGES.map((range) => (
+            <TouchableOpacity
+              key={range.key}
+              style={[styles.chip, { backgroundColor: quizRange === range.key ? colors.tint : colors.card, borderColor: colors.border }]}
+              onPress={() => setQuizRange(range.key)}
               activeOpacity={0.8}
             >
-              <Text
-                style={[
-                  styles.chipText,
-                  { color: quizRange === r.key ? '#0D0D0D' : colors.text },
-                ]}
-              >
-                {r.label}
-              </Text>
+              <Text style={[styles.chipText, { color: quizRange === range.key ? '#0D0D0D' : colors.text }]}>{range.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
+        {quizRange === 'smart' && (
+          <Text style={[styles.smartHint, { color: colors.pinyin }]}>优先今日新学未练习，再选到期词、薄弱词，最后补足其他已学词。</Text>
+        )}
 
-        {/* 题型卡片网格 */}
-        <Text style={[styles.sectionTitle, { color: colors.subtitle, marginTop: 18 }]}>
-          选择题型
-        </Text>
+        <Text style={[styles.sectionTitle, { color: colors.subtitle, marginTop: 22 }]}>选择题型</Text>
         <View style={styles.typeGrid}>
-          {TYPES.map((t) => (
+          {TYPES.map((type) => (
             <TouchableOpacity
-              key={t.key}
-              style={[styles.typeCard, { backgroundColor: colors.card }]}
-              onPress={() => startQuiz(t.key)}
+              key={type.key}
+              style={[styles.typeCard, { backgroundColor: colors.card, opacity: startingType && startingType !== type.key ? 0.55 : 1 }]}
+              onPress={() => startQuiz(type.key)}
+              disabled={startingType != null || settingsLoading}
               activeOpacity={0.7}
             >
               <View style={[styles.typeIconWrap, { backgroundColor: colors.tint + '22' }]}>
-                <FontAwesome name={t.icon} size={20} color={colors.tint} />
+                {startingType === type.key || settingsLoading ? <ActivityIndicator size="small" color={colors.tint} /> : <FontAwesome name={type.icon} size={20} color={colors.tint} />}
               </View>
-              <Text style={[styles.typeLabel, { color: colors.text }]}>
-                {t.label}
-              </Text>
-              <Text style={[styles.typeDesc, { color: colors.subtitle }]} numberOfLines={1}>
-                {t.desc}
-              </Text>
+              <Text style={[styles.typeLabel, { color: colors.text }]}>{type.label}</Text>
+              <Text style={[styles.typeDesc, { color: colors.subtitle }]} numberOfLines={1}>{type.desc}</Text>
             </TouchableOpacity>
           ))}
-        </View>
-
-        {/* 复习 */}
-        <Text style={[styles.sectionTitle, { color: colors.subtitle, marginTop: 22 }]}>
-          复习
-        </Text>
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.scopeHint, { color: colors.pinyin }]}>
-            复习「{wordbook?.name ?? '当前词本'}」中最近学过的单词
-          </Text>
-          <Text style={[styles.fieldLabel, { color: colors.text }]}>
-            最近 N 天学过的词
-          </Text>
-          <View style={styles.chipRow}>
-            {REVIEW_DAYS.map((d) => (
-              <TouchableOpacity
-                key={d}
-                style={[
-                  styles.chip,
-                  {
-                    backgroundColor:
-                      reviewDays === d ? colors.tint : colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => setReviewDays(d)}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    { color: reviewDays === d ? '#0D0D0D' : colors.text },
-                  ]}
-                >
-                  {d} 天
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: colors.tint }]}
-            onPress={startReview}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.primaryText}>开始复习</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -414,139 +211,26 @@ export default function PracticeScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
+  title: { fontSize: 28, fontWeight: '700', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  card: {
-    borderRadius: 16,
-    padding: 18,
-  },
-  fieldLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 10,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  typeCard: {
-    width: '47%',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    gap: 6,
-  },
-  typeIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  typeLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  typeDesc: {
-    fontSize: 12,
-  },
-  chip: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  chipText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  scopeHint: {
-    fontSize: 12.5,
-    lineHeight: 18,
-    marginBottom: 14,
-  },
-  primaryBtn: {
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginTop: 18,
-  },
-  primaryText: {
-    color: '#0D0D0D',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  reviewBody: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  reviewCount: {
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  gradeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 18,
-    width: '100%',
-  },
-  gradeButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  gradeText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  hint: {
-    marginTop: 22,
-    fontSize: 13,
-    letterSpacing: 0.3,
-  },
-  emptyBlock: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  emptyText: {
-    fontSize: 16,
-  },
-  backBtn: {
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-  },
-  backText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  scopeHint: { fontSize: 12.5, lineHeight: 18, marginBottom: 16 },
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 },
+  settingLabel: { fontSize: 16, fontWeight: '700' },
+  settingHint: { fontSize: 12, marginTop: 4 },
+  goalSelect: { minWidth: 94, height: 40, borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  goalSelectText: { fontSize: 14, fontWeight: '700' },
+  goalMenu: { position: 'absolute', zIndex: 10, right: 0, top: 44, width: 94, borderWidth: 1, borderRadius: 6, overflow: 'hidden' },
+  goalOption: { paddingHorizontal: 12, paddingVertical: 10 },
+  goalOptionText: { fontSize: 14, fontWeight: '600' },
+  sectionTitle: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  chip: { borderRadius: 6, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 14 },
+  chipText: { fontSize: 14, fontWeight: '600' },
+  smartHint: { fontSize: 12.5, lineHeight: 18, marginTop: 12 },
+  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  typeCard: { width: '47%', borderRadius: 6, padding: 16, alignItems: 'center', gap: 6 },
+  typeIconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  typeLabel: { fontSize: 15, fontWeight: '700' },
+  typeDesc: { fontSize: 12 },
 });

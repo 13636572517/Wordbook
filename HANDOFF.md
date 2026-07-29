@@ -634,3 +634,11 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 - 加练剩余数修复：计数在词组卡跳转前递减；若第 10 个新词有词组卡，先完成词组再自动进入本轮巩固，避免遗漏最后一词或跳入普通学习队列。
 - 生产事故修复（2026-07-29）：上线后 `/api/settings/` 返回 500。原因是无 `DJANGO_SETTINGS_MODULE` 的 `manage.py migrate` 只迁移了服务器本地 SQLite，生产 `learning.service` 实际连接 MySQL，`user_settings` 缺少 0005 的两个字段。已对 MySQL 执行 `DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/bin/python manage.py migrate vocab` 并核验设置序列化恢复。今后生产迁移和 `showmigrations` 必须显式使用 `config.settings.prod`，不能使用默认 `manage.py` 配置。
 - 生产事故修复（2026-07-29）：练习第三个环节触发 Minified React error #310。`QuizRunner` 的自动发音 `useEffect` 写在 `loading / empty / done` 的条件返回之后，加载态切换到题目态时 Hook 数量改变。已在 `8d02d75` 将 `q` 与该 `useEffect` 移到所有条件返回之前；题目为空时 effect 不执行。
+
+## 23. 功能调整（2026-07-29）：显式练习入口与统一薄弱词口径
+
+- `app/(tabs)/practice.tsx` 不再在页面聚焦后自动启动智能默写。进入练习页只显示配置与题型卡，默认范围为“智能选择”；只有点击具体题型才开始。
+- 新增 `selectSmartPracticeWordIds`：智能范围只负责挑词，不再强制混合题型。优先级为“今日新学但尚未练习 -> 到期词 -> 薄弱词 -> 其他已学词”，按所选数量返回不重复词 ID。
+- 练习数量设置移入练习页，使用 10 / 20 / 30 / 40 / 50 词菜单，写入现有 `daily_quiz_goal`；所有题型和范围均通过 `QuizRunner.limit` 按该数量截断选词。
+- 练习页移除独立“复习”界面；SM-2 到期词仍作为智能范围的第二优先级。我的页面保留每日新词和每日计划设置，移除每日练习目标输入。
+- 薄弱词的“近 30 天反复错误”规则现在统计 `source='quiz'` 与 `source='review'` 的 grade=0 日志；因此所有现有练习/复习入口的连续答错都会纳入判定。阈值仍为同词至少 2 次。

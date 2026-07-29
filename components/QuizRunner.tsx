@@ -52,6 +52,8 @@ interface QuizRunnerProps {
   range: RangeKind;
   opts?: { days?: number; wordIds?: string[] };
   types: QuizType[];
+  /** Maximum number of selected words before expanding them into questions. */
+  limit?: number;
   questionPlan?: SmartQuestionPlan[];
   onExit?: (correct?: number, total?: number) => void;
 }
@@ -73,6 +75,7 @@ export default function QuizRunner({
   range,
   opts,
   types,
+  limit,
   questionPlan,
   onExit,
 }: QuizRunnerProps) {
@@ -91,10 +94,11 @@ export default function QuizRunner({
     (async () => {
       if (!user || !wordbook) return;
       const now = Date.now();
-      const words = await pickRange(repo, user.id, wordbook.id, range, {
+      const selectedWords = await pickRange(repo, user.id, wordbook.id, range, {
         ...opts,
         now,
       });
+      const words = limit == null ? selectedWords : selectedWords.slice(0, limit);
 
       // 词组/例句题型需要完整词数据（云端 slim 不含 phrases/examples）
       const needsFullWord = types.some((t) =>
@@ -180,7 +184,7 @@ export default function QuizRunner({
     return () => {
       cancelled = true;
     };
-  }, [user, wordbook, range, opts, types, questionPlan]);
+  }, [user, wordbook, range, opts, types, limit, questionPlan]);
 
   // 判定后：对=Good(2)/错=Again(0)，复用 reviewWord + 写 studylog(source:'quiz')
   const recordGrade = async (wordId: string, correct: boolean) => {

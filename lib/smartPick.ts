@@ -46,6 +46,21 @@ function uniqueExisting(words: Word[], groups: string[][]): Word[] {
   return result;
 }
 
+/**
+ * Select a bounded, non-repeating set of words for the smart scope. Question
+ * type remains the caller's choice, so the same scope works for every card.
+ */
+export function selectSmartPracticeWordIds(input: SmartPracticeInput): string[] {
+  const todayQuiz = new Set(input.todayQuizWordIds);
+  return uniqueExisting(input.words, [
+    input.todayNewWordIds.filter((id) => !todayQuiz.has(id)),
+    input.dueWordIds,
+    input.weakWordIds,
+  ])
+    .slice(0, Math.max(0, Math.floor(input.goal)))
+    .map((word) => word.id);
+}
+
 function typesFor(word: Word): SmartQuestionType[] {
   const types: SmartQuestionType[] = ['dictation', 'choice'];
   if (word.examples?.some((example) => example.en.toLowerCase().includes(word.word.toLowerCase()))) {
@@ -75,12 +90,9 @@ function quotas(goal: number): Record<SmartQuestionType, number> {
 }
 
 export function buildSmartPracticePlan(input: SmartPracticeInput): SmartQuestionPlan[] {
-  const todayQuiz = new Set(input.todayQuizWordIds);
-  const priority = uniqueExisting(input.words, [
-    input.todayNewWordIds.filter((id) => !todayQuiz.has(id)),
-    input.dueWordIds,
-    input.weakWordIds,
-  ]);
+  const ids = selectSmartPracticeWordIds({ ...input, goal: input.words.length });
+  const byId = new Map(input.words.map((word) => [word.id, word]));
+  const priority = ids.map((id) => byId.get(id)).filter((word): word is Word => word != null);
   if (priority.length === 0 || input.goal <= 0) return [];
 
   const selected = Array.from({ length: Math.floor(input.goal) }, (_, index) => priority[index % priority.length]);

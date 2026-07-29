@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import type { Word } from '../data/types';
-import { buildSmartPracticePlan } from '../smartPick';
+import { buildSmartPracticePlan, selectSmartPracticeWordIds } from '../smartPick';
 
 const now = new Date('2026-07-29T12:00:00').getTime();
 const word = (id: string, extra: Partial<Word> = {}): Word => ({
@@ -34,6 +34,19 @@ assert.strictEqual(plan.length, 8, 'fills the configured daily goal');
 assert.strictEqual(plan[0].wordId, 'today', 'today new and unquizzed leads the session');
 assert.strictEqual(plan[1].wordId, 'due', 'due words follow today new words');
 assert.strictEqual(plan[2].wordId, 'weak', 'weak words follow due words');
+
+assert.deepStrictEqual(
+  selectSmartPracticeWordIds({
+    words,
+    todayNewWordIds: ['today'],
+    todayQuizWordIds: [],
+    dueWordIds: ['due'],
+    weakWordIds: ['weak'],
+    goal: 3,
+  }),
+  ['today', 'due', 'weak'],
+  'smart scope selects unique words in the documented priority order',
+);
 
 const typeCounts = new Map<string, number>(plan.map((item) => [item.type, 0]));
 for (const item of plan) typeCounts.set(item.type, (typeCounts.get(item.type) ?? 0) + 1);

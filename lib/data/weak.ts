@@ -33,7 +33,11 @@ export async function getWeakWordIds(
   });
   const practiceWrongCounts = new Map<string, number>();
   for (const log of logs) {
-    if (log.ts <= now && log.source === 'quiz' && log.grade === 0) {
+    if (
+      log.ts <= now
+      && (log.source === 'quiz' || log.source === 'review')
+      && log.grade === 0
+    ) {
       practiceWrongCounts.set(log.wordId, (practiceWrongCounts.get(log.wordId) ?? 0) + 1);
     }
   }

@@ -37,7 +37,11 @@ function word(id: string): Word {
   }
 
   const weakIds = await getWeakWordIds(repo, user.id, wordbook.id, NOW);
-  assert.deepStrictEqual(weakIds, ['frequent'], 'two recent quiz mistakes mark only that word as weak');
+  assert.deepStrictEqual(
+    weakIds,
+    ['frequent', 'review-only'],
+    'two recent quiz or review mistakes mark a word as weak',
+  );
 
   console.log('ALL WEAK-PRACTICE TESTS PASSED');
 })().catch((error) => {
