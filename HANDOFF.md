@@ -633,3 +633,4 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 - 生产已执行 `vocab.0005_usersettings_daily_quiz_goal_and_show_daily_plan`，`learning.service` 状态为 `active`，前端 bundle 为 4,139,410 bytes。
 - 加练剩余数修复：计数在词组卡跳转前递减；若第 10 个新词有词组卡，先完成词组再自动进入本轮巩固，避免遗漏最后一词或跳入普通学习队列。
 - 生产事故修复（2026-07-29）：上线后 `/api/settings/` 返回 500。原因是无 `DJANGO_SETTINGS_MODULE` 的 `manage.py migrate` 只迁移了服务器本地 SQLite，生产 `learning.service` 实际连接 MySQL，`user_settings` 缺少 0005 的两个字段。已对 MySQL 执行 `DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/bin/python manage.py migrate vocab` 并核验设置序列化恢复。今后生产迁移和 `showmigrations` 必须显式使用 `config.settings.prod`，不能使用默认 `manage.py` 配置。
+- 生产事故修复（2026-07-29）：练习第三个环节触发 Minified React error #310。`QuizRunner` 的自动发音 `useEffect` 写在 `loading / empty / done` 的条件返回之后，加载态切换到题目态时 Hook 数量改变。已在 `8d02d75` 将 `q` 与该 `useEffect` 移到所有条件返回之前；题目为空时 effect 不执行。
