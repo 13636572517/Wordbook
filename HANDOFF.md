@@ -642,3 +642,9 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 - 练习数量设置移入练习页，使用 10 / 20 / 30 / 40 / 50 词菜单，写入现有 `daily_quiz_goal`；所有题型和范围均通过 `QuizRunner.limit` 按该数量截断选词。
 - 练习页移除独立“复习”界面；SM-2 到期词仍作为智能范围的第二优先级。我的页面保留每日新词和每日计划设置，移除每日练习目标输入。
 - 薄弱词的“近 30 天反复错误”规则现在统计 `source='quiz'` 与 `source='review'` 的 grade=0 日志；因此所有现有练习/复习入口的连续答错都会纳入判定。阈值仍为同词至少 2 次。
+
+## 24. 修复（2026-07-29）：学习后待复习数实时刷新
+
+- 根因：`useDailyProgress` 只在页面获得焦点时读取统计。学习页保持聚焦时完成到期词，服务端 `due` 已归零，但主页进度条、弹窗仍展示进入页面时的旧数字。
+- `useDailyProgress` 现在返回 `{ progress, refresh }`；`app/(tabs)/index.tsx` 每次 `loadNext` 完成后调用 `refresh`，让待复习、新词与练习计数在当前会话内重新取数。
+- 生产排查确认：admin 的“六级”待复习记录最终为 0；此前显示的 6/7 是前端快照，不是数据库残留任务。

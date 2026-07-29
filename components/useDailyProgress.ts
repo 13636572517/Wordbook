@@ -5,9 +5,16 @@ import { getDailySettings } from '@/lib/data/settings';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 
-export function useDailyProgress(): DailyProgress | null {
+export interface DailyProgressState {
+  progress: DailyProgress | null;
+  refresh: () => void;
+}
+
+export function useDailyProgress(): DailyProgressState {
   const { user, wordbook } = useSession();
   const [progress, setProgress] = useState<DailyProgress | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const refresh = useCallback(() => setRefreshVersion((version) => version + 1), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -26,7 +33,7 @@ export function useDailyProgress(): DailyProgress | null {
         }
       })();
       return () => { active = false; };
-    }, [user, wordbook]),
+    }, [user, wordbook, refreshVersion]),
   );
-  return progress;
+  return { progress, refresh };
 }

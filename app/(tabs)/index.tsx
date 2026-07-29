@@ -77,7 +77,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, wordbook } = useSession();
-  const dailyProgress = useDailyProgress();
+  const { progress: dailyProgress, refresh: refreshDailyProgress } = useDailyProgress();
   const [showDailyPlan, setShowDailyPlan] = useState(true);
   const webAlert = useWebAlert();
   const activeWbRef = useRef<string | null>(null);
@@ -143,6 +143,7 @@ export default function HomeScreen() {
       setIsFlipped(false);
       setCardKey((k) => k + 1);
       setLoading(false);
+      refreshDailyProgress();
       // 新词自动播放发音
       if (w) speakWord(w.word, ENGLISH);
       // 云端模式：slim 词表不含释义大字段，选中单词后异步拉取
@@ -168,7 +169,7 @@ export default function HomeScreen() {
       setLoadError(e?.message || '加载失败，请重试');
       setLoading(false);
     }
-  }, [user, wordbook]);
+  }, [user, wordbook, refreshDailyProgress]);
 
   const retryLoad = useCallback(() => {
     setLoadError(null);
