@@ -962,6 +962,11 @@ export default function HomeScreen() {
               <Text style={[styles.masteryHint, { color: colors.subtitle }]}>
                 {reps > 0 ? `已掌握进度 ${reps}/3` : '新词 · 选择掌握程度以记录学习'}
               </Text>
+              {learningProgress && (
+                <View style={[styles.learningProgress, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.learningProgressText, { color: colors.text }]}>{learningProgress}</Text>
+                </View>
+              )}
               <View style={styles.gradeRow}>
                 {GRADES.map((g) => (
                   <TouchableOpacity
@@ -984,11 +989,6 @@ export default function HomeScreen() {
           )}
         </View>
       ) : null}
-      {learningProgress && (
-        <View style={[styles.learningProgress, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.learningProgressText, { color: colors.text }]}>{learningProgress}</Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -1015,8 +1015,8 @@ function StatChip({
 
 const styles = StyleSheet.create({
   learningProgress: {
-    position: 'absolute', left: 20, right: 20, bottom: 12, borderWidth: 1,
-    borderRadius: 8, paddingVertical: 9, paddingHorizontal: 12, alignItems: 'center',
+    width: '100%', borderWidth: 1, borderRadius: 8,
+    paddingVertical: 9, paddingHorizontal: 12, alignItems: 'center', marginBottom: 12,
   },
   learningProgressText: { fontSize: 13, fontWeight: '600' },
   phraseCard: { width: '100%', padding: 24, borderRadius: 14, alignItems: 'center', gap: 10 },
