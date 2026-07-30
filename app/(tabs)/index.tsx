@@ -83,6 +83,8 @@ export default function HomeScreen() {
   // 加练模式：追踪本轮学过的词 ID，结束时用于单独巩固
   const extraWordIdsRef = useRef<Set<string>>(new Set());
   const extraReviewPendingRef = useRef(false);
+  // 加练模式：延迟词组卡（学完全部新词后统一展示，而非逐词插入）
+  const deferredPhrasesRef = useRef<PhraseProgressCard[]>([]);
   // 巩固测试是否已完成（完成后不再显示“开始巩固测试”按钮）
   const [reviewCompleted, setReviewCompleted] = useState(false);
   const [cardKey, setCardKey] = useState(0);
@@ -282,6 +284,7 @@ export default function HomeScreen() {
         }
         return;
       }
+      const inExtra = extraRemainingRef.current != null && extraRemainingRef.current > 0;
       const now = Date.now();
       // 新词判定：此前无进度即首次学习，记录 isNew 供每日新词上限统计
       const existing = await repo.getProgress(user.id, wordbook.id, word.id);
@@ -321,14 +324,28 @@ export default function HomeScreen() {
           phrase: item.phrase, meaning: item.meaning,
         }));
         if (cards.length > 0) {
-          setPhraseQueue(cards);
-          setWord(null);
-          return;
+          if (inExtra) {
+            // 加练模式：延迟词组，等全部新词学完后统一展示
+            deferredPhrasesRef.current.push(...cards);
+          } else {
+            setPhraseFlipped(false);
+            setPhraseQueue(cards);
+            setWord(null);
+            return;
+          }
         }
       }
       if (extraResult?.finished) {
-        extraReviewPendingRef.current = false;
-        setExtraDecisionPending(nextExtraBatchStep(true) === 'decision');
+        if (deferredPhrasesRef.current.length > 0) {
+          // 加练学完所有新词后，统一展示延迟的词组卡
+          setPhraseFlipped(false);
+          setPhraseQueue(deferredPhrasesRef.current);
+          deferredPhrasesRef.current = [];
+          setWord(null);
+        } else {
+          extraReviewPendingRef.current = false;
+          setExtraDecisionPending(nextExtraBatchStep(true) === 'decision');
+        }
         return;
       }
       // 必须 await：确保下一词选词（读取进度）发生在 setProgress 的 PUT
@@ -357,6 +374,7 @@ export default function HomeScreen() {
     setIsPhraseSaving(true);
     try {
       await recordPhraseProgress(wordbook.id, phraseQueue[0], grade);
+      setPhraseFlipped(false);
       setPhraseQueue((queue) => queue.slice(1));
       if (currentQueueLength <= 1) {
         if (extraReviewPendingRef.current) {
@@ -380,7 +398,6 @@ export default function HomeScreen() {
     const now = Date.now();
     const logs = await repo.listStudyLogs(user.id, wordbook.id, {
       sinceTs: (() => { const d = new Date(now); d.setHours(0, 0, 0, 0); return d.getTime(); })(),
-      isNew: true,
     });
     const wordIds = [...new Set(logs.map((l) => l.wordId))];
     const words = await Promise.all(
@@ -404,6 +421,7 @@ export default function HomeScreen() {
           onPress: () => {
             extraWordIdsRef.current = new Set();
             extraReviewPendingRef.current = false;
+            deferredPhrasesRef.current = [];
             setExtraDecisionPending(false);
             extraRemainingRef.current = 10;
             setExtraRemaining(10);
@@ -810,7 +828,7 @@ export default function HomeScreen() {
                   ? `已完成 ${dailySession?.summary.completed ?? 0} 项学习${reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}`
                   : `已完成 ${todayCountRef.current} 个新词${reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}`}
               </Text>
-              {!reviewCompleted && (!sessionIsComplete || sessionNewWordCount > 0) && (
+              {!reviewCompleted && (
                 <TouchableOpacity
                   style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]}
                   onPress={startReview}
