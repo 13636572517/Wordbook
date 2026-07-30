@@ -517,15 +517,15 @@ export default function HomeScreen() {
   }, []);
 
   // 退出复习（返回正常学习模式）
-  const exitReview = useCallback(() => {
+  const exitReview = useCallback((completed = false) => {
     const wasExtra = extraWordIdsRef.current.size > 0;
     setReviewPhase(null);
     setTodayReviewWords([]);
     // 加练巩固结束：清理加练状态，不标记日常巩固已完成
     if (wasExtra) {
       setExtraDecisionPending(true);
-    } else {
-      // 日常巩固完成后标记，不再重复显示"开始巩固测试"
+    } else if (completed) {
+      // 只有完整走完巩固流程才隐藏入口；中途退出仍可继续。
       setReviewCompleted(true);
     }
     loadNext();
@@ -649,7 +649,7 @@ export default function HomeScreen() {
             <Text style={[styles.reviewProgressText, { color: colors.subtitle }]}>
               巩固复习 · 第 {reviewFlashPass + 1}/3 遍 · 第 {reviewFlashIdx + 1}/{todayReviewWords.length} 词
             </Text>
-            <TouchableOpacity onPress={exitReview}>
+            <TouchableOpacity onPress={() => exitReview()}>
               <FontAwesome name="times" size={16} color={colors.subtitle} />
             </TouchableOpacity>
           </View>
@@ -749,7 +749,7 @@ export default function HomeScreen() {
           )}
           <TouchableOpacity
             style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]}
-            onPress={exitReview}
+            onPress={() => exitReview(true)}
           >
             <Text style={[styles.reviewStartText, { color: '#0D0D0D' }]}>
               返回学习
