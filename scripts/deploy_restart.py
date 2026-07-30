@@ -31,8 +31,8 @@ def sudo_step(c, label, cmd, timeout=180):
 
 def main():
     with SSHClient() as c:
-        if step(c, "F1 migrate (idempotent)",
-                "cd /opt/learning/backend && ./venv/bin/python manage.py migrate", timeout=180) != 0:
+        if step(c, "F1 migrate with production settings (idempotent)",
+                "cd /opt/learning/backend && DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/bin/python manage.py migrate", timeout=180) != 0:
             print("MIGRATE FAILED"); sys.exit(1)
         if sudo_step(c, "F2 restart learning", "systemctl restart learning", timeout=60) != 0:
             print("RESTART FAILED"); sys.exit(1)
