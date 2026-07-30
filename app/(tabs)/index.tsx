@@ -268,6 +268,11 @@ export default function HomeScreen() {
     if (user) getDailySettings(user.id).then((settings) => setShowDailyPlan(settings.showDailyPlan)).catch(() => undefined);
   }, [user]);
 
+  // 巩固完成只属于当前词本的当前每日会话；次日或切换词本必须恢复入口。
+  useEffect(() => {
+    setReviewCompleted(false);
+  }, [wordbook?.id, dailySession?.id]);
+
   const handleGrade = async (grade: Grade) => {
     if (word && user && wordbook) {
       if (isCloud && dailySession?.currentItem && extraRemainingRef.current == null) {
@@ -398,6 +403,7 @@ export default function HomeScreen() {
     const now = Date.now();
     const logs = await repo.listStudyLogs(user.id, wordbook.id, {
       sinceTs: (() => { const d = new Date(now); d.setHours(0, 0, 0, 0); return d.getTime(); })(),
+      isNew: true,
     });
     const wordIds = [...new Set(logs.map((l) => l.wordId))];
     const words = await Promise.all(
@@ -550,7 +556,6 @@ export default function HomeScreen() {
   }, [loadNext]);
 
   const sessionIsComplete = isCloud && dailySession?.status === 'completed';
-  const sessionNewWordCount = dailySession?.items.filter((item) => item.kind === 'word_new').length ?? 0;
 
   if (loadError) {
     return (

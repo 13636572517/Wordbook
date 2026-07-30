@@ -428,18 +428,21 @@ def _session_item_data(item):
 
 
 def _session_data(session):
-    items = list(session.items.select_related("word").order_by("position"))
-    pending = next((item for item in items if item.status == DailyStudySessionItem.Status.PENDING), None)
+    items = session.items
+    pending = items.filter(
+        status=DailyStudySessionItem.Status.PENDING,
+    ).select_related("word").order_by("position").first()
+    total = items.count()
+    remaining = items.filter(status=DailyStudySessionItem.Status.PENDING).count()
     return {
         "id": session.id,
         "status": session.status,
         "current_position": session.current_position,
-        "items": [_session_item_data(item) for item in items],
         "current_item": _session_item_data(pending) if pending else None,
         "summary": {
-            "total": len(items),
-            "completed": sum(item.status == DailyStudySessionItem.Status.COMPLETED for item in items),
-            "remaining": sum(item.status == DailyStudySessionItem.Status.PENDING for item in items),
+            "total": total,
+            "completed": total - remaining,
+            "remaining": remaining,
         },
     }
 

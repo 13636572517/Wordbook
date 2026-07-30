@@ -522,7 +522,6 @@ export type DailyStudySession = {
   id: number;
   status: 'active' | 'completed';
   currentPosition: number;
-  items: DailySessionItem[];
   currentItem: DailySessionItem | null;
   summary: { total: number; completed: number; remaining: number };
 };
@@ -536,7 +535,6 @@ function mapDailySession(data: any): DailyStudySession {
   });
   return {
     id: Number(data.id), status: data.status, currentPosition: Number(data.current_position),
-    items: (data.items ?? []).map(mapItem),
     currentItem: data.current_item ? mapItem(data.current_item) : null,
     summary: data.summary,
   };

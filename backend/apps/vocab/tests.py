@@ -95,8 +95,11 @@ class DailyStudySessionAPITest(TestCase):
         resp = self.client.get(f"/api/sessions/today/?wordbook_id={self.wordbook.id}")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertEqual([item["kind"] for item in data["items"]], ["word_review", "word_new", "phrase"])
-        self.assertEqual(data["items"][2]["phrase"], "new phrase")
+        self.assertEqual(
+            list(DailyStudySessionItem.objects.filter(session_id=data["id"]).values_list("kind", flat=True)),
+            ["word_review", "word_new", "phrase"],
+        )
+        self.assertEqual(DailyStudySessionItem.objects.get(session_id=data["id"], position=2).phrase, "new phrase")
 
         session_id = data["id"]
         resp = self.client.post(f"/api/sessions/{session_id}/items/0/grade/", {"grade": 0}, format="json")
@@ -118,6 +121,14 @@ class DailyStudySessionAPITest(TestCase):
         resp = self.client.post(f"/api/sessions/{session_id}/items/{retry.position}/grade/", {"grade": 0}, format="json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(DailyStudySessionItem.objects.filter(session_id=session_id).count(), 4)
+
+    def test_returns_only_current_item_and_summary_for_large_queues(self):
+        resp = self.client.get(f"/api/sessions/today/?wordbook_id={self.wordbook.id}")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertNotIn("items", data)
+        self.assertEqual(data["current_item"]["kind"], "word_review")
+        self.assertEqual(data["summary"], {"total": 3, "completed": 0, "remaining": 3})
 
 
 class WordbookAPITest(TestCase):

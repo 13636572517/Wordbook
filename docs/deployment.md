@@ -188,7 +188,7 @@ server {
         if ($request_method = POST) { set $skip_cache 1; }
         if ($request_method = PUT) { set $skip_cache 1; }
         if ($request_method = DELETE) { set $skip_cache 1; }
-        if ($request_uri ~* "^/api/(me/|settings/|teacher/|enrich/|progress/|stats/)") {
+        if ($request_uri ~* "^/api/(me/|settings/|teacher/|enrich/|progress/|phrase-progress/|sessions/|stats/)") {
             set $skip_cache 1;
         }
         proxy_cache_bypass $skip_cache;
