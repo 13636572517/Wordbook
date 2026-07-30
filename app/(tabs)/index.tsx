@@ -142,6 +142,14 @@ export default function HomeScreen() {
           setIsFlipped(false);
           setCardKey((k) => k + 1);
           speakWord(nextWord.word, ENGLISH);
+          // 每日会话接口只返回卡片首屏所需字段；翻面内容按需补全，
+          // 并防止旧请求晚到后覆盖已经切换的新单词。
+          const wordId = nextWord.id;
+          void fetchWordDetail(wordId)
+            .then((full) => {
+              setWord((current) => (current?.id === wordId ? { ...current, ...full } : current));
+            })
+            .catch((error) => console.warn('会话单词详情补全失败', error));
         } else {
           setPhraseQueue([]);
           setWord(null);
