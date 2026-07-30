@@ -55,6 +55,7 @@ type ReviewPhase =
 export default function HomeScreen() {
   const [word, setWord] = useState<Word | null>(null);
   const [phraseQueue, setPhraseQueue] = useState<PhraseProgressCard[]>([]);
+  const [isPhraseSaving, setIsPhraseSaving] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
   const [stats, setStats] = useState<WordbookStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -269,16 +270,25 @@ export default function HomeScreen() {
   };
 
   const handlePhraseGrade = async (grade: Grade) => {
-    if (!wordbook || phraseQueue.length === 0) return;
-    await recordPhraseProgress(wordbook.id, phraseQueue[0], grade);
-    setPhraseQueue((queue) => queue.slice(1));
-    if (phraseQueue.length <= 1) {
-      if (extraReviewPendingRef.current) {
-        extraReviewPendingRef.current = false;
-        setExtraDecisionPending(nextExtraBatchStep(true) === 'decision');
-      } else {
-        await loadNext();
+    if (!wordbook || phraseQueue.length === 0 || isPhraseSaving) return;
+    const currentQueueLength = phraseQueue.length;
+    setIsPhraseSaving(true);
+    try {
+      await recordPhraseProgress(wordbook.id, phraseQueue[0], grade);
+      setPhraseQueue((queue) => queue.slice(1));
+      if (currentQueueLength <= 1) {
+        if (extraReviewPendingRef.current) {
+          extraReviewPendingRef.current = false;
+          setExtraDecisionPending(nextExtraBatchStep(true) === 'decision');
+        } else {
+          await loadNext();
+        }
       }
+    } catch (e) {
+      console.warn('词组进度保存失败', e);
+      webAlert('保存失败', '词组学习进度未保存，请重试。');
+    } finally {
+      setIsPhraseSaving(false);
     }
   };
 
@@ -697,7 +707,7 @@ export default function HomeScreen() {
             <Text style={[styles.phraseText, { color: colors.text }]}>{phraseQueue[0].phrase}</Text>
             <Text style={[styles.phraseMeaning, { color: colors.subtitle }]}>{phraseQueue[0].meaning}</Text>
           </View>
-          <View style={styles.gradeRow}>{GRADES.map((g) => <TouchableOpacity key={g.grade} style={[styles.gradeButton, { backgroundColor: g.color }]} onPress={() => handlePhraseGrade(g.grade)}><Text style={styles.gradeText}>{g.label}</Text></TouchableOpacity>)}</View>
+          <View style={styles.gradeRow}>{GRADES.map((g) => <TouchableOpacity key={g.grade} style={[styles.gradeButton, { backgroundColor: g.color }, isPhraseSaving && styles.gradeButtonDisabled]} onPress={() => handlePhraseGrade(g.grade)} disabled={isPhraseSaving}><Text style={styles.gradeText}>{isPhraseSaving ? '保存中' : g.label}</Text></TouchableOpacity>)}</View>
         </View>
       ) : !reviewPhase && !extraDecisionPending && !word ? (
         <ScrollView
@@ -921,6 +931,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 12,
+  },
+  gradeButtonDisabled: {
+    opacity: 0.55,
   },
   gradeText: {
     color: '#FFFFFF',
