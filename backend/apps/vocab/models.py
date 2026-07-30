@@ -279,3 +279,30 @@ class DailyStudySessionItem(models.Model):
     @property
     def can_retry(self):
         return not self.is_retry
+
+
+class DailyStudyConsolidation(models.Model):
+    """每日学习完成后的可恢复巩固流程快照。"""
+
+    class Phase(models.TextChoices):
+        FLASHCARDS = "flashcards", "新词闪卡"
+        CHOICE = "choice", "选择释义"
+        DICTATION = "dictation", "单词默写"
+        COMPLETED = "completed", "已完成"
+
+    session = models.OneToOneField(
+        DailyStudySession, on_delete=models.CASCADE, related_name="consolidation",
+    )
+    phase = models.CharField(max_length=16, choices=Phase.choices, default=Phase.FLASHCARDS)
+    flashcard_word_ids = models.JSONField(default=list)
+    flashcard_queue = models.JSONField(default=list)
+    flashcard_pass = models.PositiveSmallIntegerField(default=0)
+    flashcard_position = models.PositiveIntegerField(default=0)
+    choice_word_ids = models.JSONField(default=list)
+    choice_position = models.PositiveIntegerField(default=0)
+    dictation_word_ids = models.JSONField(default=list)
+    dictation_position = models.PositiveIntegerField(default=0)
+    updated_at = models.BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "daily_study_consolidations"

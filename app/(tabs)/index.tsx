@@ -26,10 +26,12 @@ import FlashCard from '@/components/FlashCard';
 import { speakWord } from '@/lib/speech';
 import {
   fetchDuePhraseCards,
+  advanceDailyConsolidation,
   fetchTodayStudySession,
   fetchWordDetail,
   gradeDailySessionItem,
   recordPhraseProgress,
+  type DailyConsolidation,
   type DailyStudySession,
   type PhraseProgressCard,
 } from '@/lib/data/httpRepo';
@@ -415,6 +417,51 @@ export default function HomeScreen() {
     return words.filter((w): w is Word => w != null);
   }, [user, wordbook]);
 
+  const loadConsolidationWords = useCallback(async (ids: string[]): Promise<Word[]> => {
+    const words = await Promise.all(ids.map(async (id) => {
+      try { return isCloud ? await fetchWordDetail(id) : await repo.getWord(id); } catch { return null; }
+    }));
+    return words.filter((word): word is Word => word != null);
+  }, []);
+
+  const resumeConsolidation = useCallback(async (consolidation: DailyConsolidation) => {
+    if (consolidation.phase === 'completed') {
+      setReviewPhase('done');
+      return;
+    }
+    const ids = consolidation.phase === 'flashcards'
+      ? consolidation.flashcardWordIds
+      : consolidation.phase === 'choice'
+        ? consolidation.choiceWordIds
+        : consolidation.dictationWordIds;
+    const words = await loadConsolidationWords(ids);
+    setTodayReviewWords(words);
+    setReviewFlipped(false);
+    if (consolidation.phase === 'flashcards') {
+      setReviewFlashPass(consolidation.flashcardPass);
+      setReviewFlashIdx(consolidation.flashcardPosition);
+      setReviewPhase('flashcards');
+    } else {
+      setReviewPhase(consolidation.phase);
+    }
+  }, [loadConsolidationWords]);
+
+  const advanceConsolidation = useCallback(async (
+    phase: DailyConsolidation['phase'], position: number,
+  ) => {
+    if (!dailySession) return;
+    const next = await advanceDailyConsolidation(dailySession.id, phase, position);
+    setDailySession((session) => session ? { ...session, consolidation: next } : session);
+    await resumeConsolidation(next);
+  }, [dailySession, resumeConsolidation]);
+
+  useEffect(() => {
+    const consolidation = dailySession?.consolidation;
+    if (dailySession?.status === 'completed' && consolidation && reviewPhase == null) {
+      void resumeConsolidation(consolidation);
+    }
+  }, [dailySession?.id, dailySession?.status, dailySession?.consolidation, reviewPhase, resumeConsolidation]);
+
   // 加练确认：弹窗二次确认后启动加练模式（每轮+10新词）
   const confirmExtraPractice = useCallback(() => {
     webAlert(
@@ -491,6 +538,11 @@ export default function HomeScreen() {
 
   // 闪卡复习：认识(继续下一张) / 不认识(保留在队列末尾)
   const onReviewKnow = useCallback((know: boolean) => {
+    const consolidation = dailySession?.consolidation;
+    if (consolidation?.phase === 'flashcards') {
+      void advanceConsolidation('flashcards', consolidation.flashcardPosition);
+      return;
+    }
     setReviewFlipped(false);
     setTodayReviewWords((words) => {
       const w = words[reviewFlashIdx];
@@ -526,7 +578,7 @@ export default function HomeScreen() {
       }
       return idx + 1;
     });
-  }, [reviewFlashIdx, reviewFlashPass, todayReviewWords]);
+  }, [advanceConsolidation, dailySession?.consolidation, reviewFlashIdx, reviewFlashPass, todayReviewWords]);
 
   // 选择测试完成
   const onChoiceDone = useCallback((correct: number, total: number) => {
@@ -556,6 +608,16 @@ export default function HomeScreen() {
   }, [loadNext]);
 
   const sessionIsComplete = isCloud && dailySession?.status === 'completed';
+  const consolidation = dailySession?.consolidation;
+  const learningProgress = consolidation && consolidation.phase !== 'completed'
+    ? consolidation.phase === 'flashcards'
+      ? `新词闪卡 · 第 ${consolidation.flashcardPass + 1}/3 轮 · ${consolidation.flashcardPosition + 1}/${consolidation.flashcardWordIds.length}`
+      : consolidation.phase === 'choice'
+        ? `选择释义 · ${consolidation.choicePosition + 1}/${consolidation.choiceWordIds.length}`
+        : `单词默写 · ${consolidation.dictationPosition + 1}/${consolidation.dictationWordIds.length}`
+    : dailySession
+      ? `学习队列 · ${dailySession.summary.completed}/${dailySession.summary.total}`
+      : null;
 
   if (loadError) {
     return (
@@ -723,9 +785,13 @@ export default function HomeScreen() {
       {reviewPhase === 'choice' && (
         <View style={{ flex: 1 }}>
           <QuizRunner
+            key={`choice-${dailySession?.consolidation?.choicePosition ?? 0}`}
             range="custom"
             types={['choice']}
             opts={{ wordIds: todayReviewWords.map((w) => w.id) }}
+            initialIndex={dailySession?.consolidation?.choicePosition ?? 0}
+            preserveOrder
+            onAdvance={() => advanceConsolidation('choice', dailySession?.consolidation?.choicePosition ?? 0)}
             onExit={(correct, total) => {
               // X 按钮无参数 → 退出复习；完成返回有分数 → 进入下一环节
               if (correct === undefined) { exitReview(); return; }
@@ -738,9 +804,13 @@ export default function HomeScreen() {
       {reviewPhase === 'dictation' && (
         <View style={{ flex: 1 }}>
           <QuizRunner
+            key={`dictation-${dailySession?.consolidation?.dictationPosition ?? 0}`}
             range="custom"
             types={['dictation']}
             opts={{ wordIds: todayReviewWords.map((w) => w.id) }}
+            initialIndex={dailySession?.consolidation?.dictationPosition ?? 0}
+            preserveOrder
+            onAdvance={() => advanceConsolidation('dictation', dailySession?.consolidation?.dictationPosition ?? 0)}
             onExit={(correct, total) => {
               if (correct === undefined) { exitReview(); return; }
               onDictDone(correct, total ?? 0);
@@ -909,6 +979,11 @@ export default function HomeScreen() {
           )}
         </View>
       ) : null}
+      {learningProgress && (
+        <View style={[styles.learningProgress, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.learningProgressText, { color: colors.text }]}>{learningProgress}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -934,6 +1009,11 @@ function StatChip({
 }
 
 const styles = StyleSheet.create({
+  learningProgress: {
+    position: 'absolute', left: 20, right: 20, bottom: 12, borderWidth: 1,
+    borderRadius: 8, paddingVertical: 9, paddingHorizontal: 12, alignItems: 'center',
+  },
+  learningProgressText: { fontSize: 13, fontWeight: '600' },
   phraseCard: { width: '100%', padding: 24, borderRadius: 14, alignItems: 'center', gap: 10 },
   phraseText: { fontSize: 24, fontWeight: '700', textAlign: 'center' },
   phraseMeaning: { fontSize: 16, textAlign: 'center' },

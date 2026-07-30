@@ -24,6 +24,7 @@ from .admin_check import is_admin_user, is_teacher_or_admin
 from .models import (
     DailyStudySession,
     DailyStudySessionItem,
+    DailyStudyConsolidation,
     StudyLog,
     UserPhraseProgress,
     UserSettings,
@@ -434,7 +435,7 @@ def _session_data(session):
     ).select_related("word").order_by("position").first()
     total = items.count()
     remaining = items.filter(status=DailyStudySessionItem.Status.PENDING).count()
-    return {
+    data = {
         "id": session.id,
         "status": session.status,
         "current_position": session.current_position,
@@ -444,6 +445,65 @@ def _session_data(session):
             "completed": total - remaining,
             "remaining": remaining,
         },
+    }
+    try:
+        consolidation = session.consolidation
+    except DailyStudyConsolidation.DoesNotExist:
+        consolidation = None
+    if consolidation:
+        data["consolidation"] = {
+            "phase": consolidation.phase,
+            "flashcard_word_ids": consolidation.flashcard_word_ids,
+            "flashcard_queue": consolidation.flashcard_queue,
+            "flashcard_pass": consolidation.flashcard_pass,
+            "flashcard_position": consolidation.flashcard_position,
+            "choice_word_ids": consolidation.choice_word_ids,
+            "choice_position": consolidation.choice_position,
+            "dictation_word_ids": consolidation.dictation_word_ids,
+            "dictation_position": consolidation.dictation_position,
+        }
+    return data
+
+
+def _ensure_consolidation(session, now_ms):
+    word_items = session.items.filter(
+        kind__in=[DailyStudySessionItem.Kind.WORD_REVIEW, DailyStudySessionItem.Kind.WORD_NEW],
+    ).order_by("position")
+    all_word_ids, new_word_ids = [], []
+    for item in word_items:
+        if item.word_id not in all_word_ids:
+            all_word_ids.append(item.word_id)
+        if item.kind == DailyStudySessionItem.Kind.WORD_NEW and item.word_id not in new_word_ids:
+            new_word_ids.append(item.word_id)
+    phase = (
+        DailyStudyConsolidation.Phase.FLASHCARDS if new_word_ids else
+        DailyStudyConsolidation.Phase.CHOICE if all_word_ids else
+        DailyStudyConsolidation.Phase.COMPLETED
+    )
+    return DailyStudyConsolidation.objects.get_or_create(
+        session=session,
+        defaults={
+            "phase": phase,
+            "flashcard_word_ids": new_word_ids,
+            "flashcard_queue": new_word_ids,
+            "choice_word_ids": all_word_ids,
+            "dictation_word_ids": new_word_ids,
+            "updated_at": now_ms,
+        },
+    )
+
+
+def _consolidation_data(consolidation):
+    return {
+        "phase": consolidation.phase,
+        "flashcard_word_ids": consolidation.flashcard_word_ids,
+        "flashcard_queue": consolidation.flashcard_queue,
+        "flashcard_pass": consolidation.flashcard_pass,
+        "flashcard_position": consolidation.flashcard_position,
+        "choice_word_ids": consolidation.choice_word_ids,
+        "choice_position": consolidation.choice_position,
+        "dictation_word_ids": consolidation.dictation_word_ids,
+        "dictation_position": consolidation.dictation_position,
     }
 
 
@@ -534,6 +594,8 @@ class DailyStudySessionTodayView(APIView):
                 )
                 if created:
                     self._build_items(session, now_ms)
+                elif session.status == DailyStudySession.Status.COMPLETED:
+                    _ensure_consolidation(session, now_ms)
         except IntegrityError:
             session = DailyStudySession.objects.get(user_id=user_id, wordbook=wordbook, study_date=today)
         return Response(_session_data(session))
@@ -680,7 +742,59 @@ class DailyStudySessionGradeView(APIView):
             if next_item is None:
                 session.status = DailyStudySession.Status.COMPLETED
             session.save(update_fields=["current_position", "updated_at", "status"])
+            if next_item is None:
+                _ensure_consolidation(session, now_ms)
         return Response(_session_data(session))
+
+
+class DailyStudyConsolidationAdvanceView(APIView):
+    """推进持久化巩固阶段；位置不匹配时拒绝旧页面的重复提交。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, session_id):
+        phase = request.data.get("phase")
+        position = request.data.get("position")
+        try:
+            position = int(position)
+        except (TypeError, ValueError):
+            return Response({"error": "position 必须为整数"}, status=400)
+        with transaction.atomic():
+            try:
+                consolidation = DailyStudyConsolidation.objects.select_for_update().select_related("session").get(
+                    session_id=session_id, session__user_id=request.user.id,
+                )
+            except DailyStudyConsolidation.DoesNotExist:
+                return Response({"error": "巩固会话不存在"}, status=404)
+            if consolidation.phase != phase:
+                return Response(_consolidation_data(consolidation))
+
+            if phase == DailyStudyConsolidation.Phase.FLASHCARDS:
+                if position != consolidation.flashcard_position:
+                    return Response(_consolidation_data(consolidation))
+                consolidation.flashcard_position += 1
+                if consolidation.flashcard_position >= len(consolidation.flashcard_word_ids):
+                    consolidation.flashcard_pass += 1
+                    consolidation.flashcard_position = 0
+                    if consolidation.flashcard_pass >= 3:
+                        consolidation.phase = DailyStudyConsolidation.Phase.CHOICE
+            elif phase == DailyStudyConsolidation.Phase.CHOICE:
+                if position != consolidation.choice_position:
+                    return Response(_consolidation_data(consolidation))
+                consolidation.choice_position += 1
+                if consolidation.choice_position >= len(consolidation.choice_word_ids):
+                    consolidation.phase = DailyStudyConsolidation.Phase.DICTATION
+            elif phase == DailyStudyConsolidation.Phase.DICTATION:
+                if position != consolidation.dictation_position:
+                    return Response(_consolidation_data(consolidation))
+                consolidation.dictation_position += 1
+                if consolidation.dictation_position >= len(consolidation.dictation_word_ids):
+                    consolidation.phase = DailyStudyConsolidation.Phase.COMPLETED
+            else:
+                return Response(_consolidation_data(consolidation))
+            consolidation.updated_at = int(time.time() * 1000)
+            consolidation.save()
+        return Response(_consolidation_data(consolidation))
 
 
 class PhraseProgressView(APIView):

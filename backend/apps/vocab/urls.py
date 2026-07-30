@@ -21,6 +21,7 @@ urlpatterns = [
     path("phrase-progress/", views.PhraseProgressView.as_view()),
     path("sessions/today/", views.DailyStudySessionTodayView.as_view()),
     path("sessions/<int:session_id>/items/<int:position>/grade/", views.DailyStudySessionGradeView.as_view()),
+    path("sessions/<int:session_id>/consolidation/advance/", views.DailyStudyConsolidationAdvanceView.as_view()),
     # 用户设置（每日新词上限）
     path("settings/", views.UserSettingsView.as_view()),
     # 单词搜索

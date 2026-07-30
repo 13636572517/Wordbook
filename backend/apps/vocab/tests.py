@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 from .models import (
     DailyStudySession,
     DailyStudySessionItem,
+    DailyStudyConsolidation,
     StudyLog,
     UserPhraseProgress,
     UserSettings,
@@ -129,6 +130,54 @@ class DailyStudySessionAPITest(TestCase):
         self.assertNotIn("items", data)
         self.assertEqual(data["current_item"]["kind"], "word_review")
         self.assertEqual(data["summary"], {"total": 3, "completed": 0, "remaining": 3})
+
+    def test_completion_creates_three_phase_consolidation_snapshot(self):
+        session = DailyStudySession.objects.create(
+            user_id=1, wordbook=self.wordbook, study_date=date.today(), current_position=0,
+        )
+        review = DailyStudySessionItem.objects.create(
+            session=session, position=0, kind="word_review", word=self.due_word,
+        )
+        new = DailyStudySessionItem.objects.create(
+            session=session, position=1, kind="word_new", word=self.new_word,
+        )
+        self.client.post(f"/api/sessions/{session.id}/items/{review.position}/grade/", {"grade": 2}, format="json")
+        resp = self.client.post(f"/api/sessions/{session.id}/items/{new.position}/grade/", {"grade": 2}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        consolidation = DailyStudyConsolidation.objects.get(session=session)
+        self.assertEqual(consolidation.phase, "flashcards")
+        self.assertEqual(consolidation.flashcard_word_ids, [self.new_word.id])
+        self.assertEqual(consolidation.choice_word_ids, [self.due_word.id, self.new_word.id])
+        self.assertEqual(consolidation.dictation_word_ids, [self.new_word.id])
+
+    def test_consolidation_advances_through_three_flashcard_passes(self):
+        session = DailyStudySession.objects.create(user_id=1, wordbook=self.wordbook, study_date=date.today())
+        consolidation = DailyStudyConsolidation.objects.create(
+            session=session,
+            flashcard_word_ids=[self.new_word.id],
+            flashcard_queue=[self.new_word.id],
+            choice_word_ids=[self.new_word.id],
+            dictation_word_ids=[self.new_word.id],
+        )
+        for _ in range(3):
+            response = self.client.post(
+                f"/api/sessions/{session.id}/consolidation/advance/",
+                {"phase": "flashcards", "position": 0}, format="json",
+            )
+            self.assertEqual(response.status_code, 200)
+        consolidation.refresh_from_db()
+        self.assertEqual(consolidation.phase, "choice")
+
+    def test_completed_legacy_session_gets_consolidation_when_reopened(self):
+        session = DailyStudySession.objects.create(
+            user_id=1, wordbook=self.wordbook, study_date=date.today(), status="completed",
+        )
+        DailyStudySessionItem.objects.create(
+            session=session, position=0, kind="word_new", word=self.new_word, status="completed",
+        )
+        response = self.client.get(f"/api/sessions/today/?wordbook_id={self.wordbook.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(DailyStudyConsolidation.objects.filter(session=session).exists())
 
 
 class WordbookAPITest(TestCase):

@@ -524,7 +524,32 @@ export type DailyStudySession = {
   currentPosition: number;
   currentItem: DailySessionItem | null;
   summary: { total: number; completed: number; remaining: number };
+  consolidation?: DailyConsolidation;
 };
+
+export type DailyConsolidation = {
+  phase: 'flashcards' | 'choice' | 'dictation' | 'completed';
+  flashcardWordIds: ID[];
+  flashcardPass: number;
+  flashcardPosition: number;
+  choiceWordIds: ID[];
+  choicePosition: number;
+  dictationWordIds: ID[];
+  dictationPosition: number;
+};
+
+function mapConsolidation(data: any): DailyConsolidation {
+  return {
+    phase: data.phase,
+    flashcardWordIds: (data.flashcard_word_ids ?? []).map(toStr),
+    flashcardPass: Number(data.flashcard_pass),
+    flashcardPosition: Number(data.flashcard_position),
+    choiceWordIds: (data.choice_word_ids ?? []).map(toStr),
+    choicePosition: Number(data.choice_position),
+    dictationWordIds: (data.dictation_word_ids ?? []).map(toStr),
+    dictationPosition: Number(data.dictation_position),
+  };
+}
 
 function mapDailySession(data: any): DailyStudySession {
   const mapItem = (item: any): DailySessionItem => ({
@@ -537,7 +562,18 @@ function mapDailySession(data: any): DailyStudySession {
     id: Number(data.id), status: data.status, currentPosition: Number(data.current_position),
     currentItem: data.current_item ? mapItem(data.current_item) : null,
     summary: data.summary,
+    consolidation: data.consolidation ? mapConsolidation(data.consolidation) : undefined,
   };
+}
+
+export async function advanceDailyConsolidation(
+  sessionId: number,
+  phase: DailyConsolidation['phase'],
+  position: number,
+): Promise<DailyConsolidation> {
+  return mapConsolidation(await api<any>(`/sessions/${sessionId}/consolidation/advance/`, {
+    method: 'POST', body: JSON.stringify({ phase, position }),
+  }));
 }
 
 export async function fetchTodayStudySession(wordbookId: ID): Promise<DailyStudySession> {

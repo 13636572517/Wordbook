@@ -55,6 +55,9 @@ interface QuizRunnerProps {
   /** Maximum number of selected words before expanding them into questions. */
   limit?: number;
   questionPlan?: SmartQuestionPlan[];
+  initialIndex?: number;
+  preserveOrder?: boolean;
+  onAdvance?: (position: number) => void | Promise<void>;
   onExit?: (correct?: number, total?: number) => void;
 }
 
@@ -77,6 +80,9 @@ export default function QuizRunner({
   types,
   limit,
   questionPlan,
+  initialIndex = 0,
+  preserveOrder = false,
+  onAdvance,
   onExit,
 }: QuizRunnerProps) {
   const colors = useColors();
@@ -178,13 +184,14 @@ export default function QuizRunner({
         setPhase('empty');
         return;
       }
-      setQuestions(shuffle(pool));
+      setQuestions(preserveOrder ? pool : shuffle(pool));
+      setIdx(Math.min(initialIndex, Math.max(pool.length - 1, 0)));
       setPhase('quiz');
     })();
     return () => {
       cancelled = true;
     };
-  }, [user, wordbook, range, opts, types, limit, questionPlan]);
+  }, [user, wordbook, range, opts, types, limit, questionPlan, initialIndex, preserveOrder]);
 
   // 判定后：对=Good(2)/错=Again(0)，复用 reviewWord + 写 studylog(source:'quiz')
   const recordGrade = async (wordId: string, correct: boolean) => {
@@ -219,7 +226,8 @@ export default function QuizRunner({
     ]);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    await onAdvance?.(idx);
     if (idx + 1 >= questions.length) setPhase('done');
     else setIdx(idx + 1);
   };
@@ -321,7 +329,7 @@ function QuestionCard({
 }: {
   quiz: Quiz;
   onGrade: (correct: boolean, userAnswer: string) => void | Promise<void>;
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
   isLast: boolean;
 }) {
   const colors = useColors();
