@@ -13,6 +13,7 @@ import type { CreateWordbookInput, Repository, ListStudyLogsOpts } from './repo'
 import type { ID, User, UserWordProgress, Word, Wordbook, WordDefinition, WordExample, WordPhrase, StudyLog, PracticeActivityType } from './types';
 import {
   DAILY_GOAL_DEFAULT,
+  DAILY_PHRASE_GOAL_DEFAULT,
   DAILY_QUIZ_GOAL_DEFAULT,
   type DailySettings,
 } from './settings';
@@ -486,6 +487,7 @@ export async function fetchDailySettings(_userId: ID): Promise<DailySettings> {
   return {
     dailyNewWordGoal: Number(data.daily_new_word_goal) || DAILY_GOAL_DEFAULT,
     dailyQuizGoal: Number(data.daily_quiz_goal) || DAILY_QUIZ_GOAL_DEFAULT,
+    dailyPhraseGoal: Number(data.daily_phrase_goal) || DAILY_PHRASE_GOAL_DEFAULT,
     showDailyPlan: data.show_daily_plan !== false,
   };
 }
@@ -497,8 +499,61 @@ export async function updateDailySettings(
   const body: Record<string, unknown> = {};
   if (update.dailyNewWordGoal != null) body.daily_new_word_goal = update.dailyNewWordGoal;
   if (update.dailyQuizGoal != null) body.daily_quiz_goal = update.dailyQuizGoal;
+  if (update.dailyPhraseGoal != null) body.daily_phrase_goal = update.dailyPhraseGoal;
   if (update.showDailyPlan != null) body.show_daily_plan = update.showDailyPlan;
   await api('/settings/', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export type DailySessionItem = {
+  position: number;
+  kind: 'word_review' | 'word_new' | 'phrase';
+  status: 'pending' | 'completed';
+  wordId: ID;
+  word: string;
+  translation: string;
+  pronunciation?: string;
+  phraseKey: string;
+  phrase: string;
+  meaning: string;
+  isRetry: boolean;
+};
+
+export type DailyStudySession = {
+  id: number;
+  status: 'active' | 'completed';
+  currentPosition: number;
+  items: DailySessionItem[];
+  currentItem: DailySessionItem | null;
+  summary: { total: number; completed: number; remaining: number };
+};
+
+function mapDailySession(data: any): DailyStudySession {
+  const mapItem = (item: any): DailySessionItem => ({
+    position: Number(item.position), kind: item.kind, status: item.status,
+    wordId: toStr(item.word_id), word: item.word, translation: item.translation,
+    pronunciation: item.pronunciation ?? undefined, phraseKey: item.phrase_key,
+    phrase: item.phrase, meaning: item.meaning, isRetry: !!item.is_retry,
+  });
+  return {
+    id: Number(data.id), status: data.status, currentPosition: Number(data.current_position),
+    items: (data.items ?? []).map(mapItem),
+    currentItem: data.current_item ? mapItem(data.current_item) : null,
+    summary: data.summary,
+  };
+}
+
+export async function fetchTodayStudySession(wordbookId: ID): Promise<DailyStudySession> {
+  return mapDailySession(await api<any>(`/sessions/today/?wordbook_id=${toNum(wordbookId)}`));
+}
+
+export async function gradeDailySessionItem(
+  sessionId: number,
+  position: number,
+  grade: number,
+): Promise<DailyStudySession> {
+  return mapDailySession(await api<any>(`/sessions/${sessionId}/items/${position}/grade/`, {
+    method: 'POST', body: JSON.stringify({ grade }),
+  }));
 }
 
 // --- 额外 API（非 Repository 接口， Phase B 增强）---

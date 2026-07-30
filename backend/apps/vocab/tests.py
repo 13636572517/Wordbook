@@ -3,13 +3,24 @@
 """
 
 import time
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import patch
 
+from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from .models import StudyLog, UserSettings, UserWordProgress, Word, Wordbook, WordbookWord
+from .models import (
+    DailyStudySession,
+    DailyStudySessionItem,
+    StudyLog,
+    UserPhraseProgress,
+    UserSettings,
+    UserWordProgress,
+    Word,
+    Wordbook,
+    WordbookWord,
+)
 
 
 def make_test_token(user_id: int) -> str:
@@ -18,6 +29,95 @@ def make_test_token(user_id: int) -> str:
     token = AccessToken()
     token["user_id"] = user_id
     return str(token)
+
+
+class DailyStudySessionModelTest(TestCase):
+    def setUp(self):
+        self.wordbook = Wordbook.objects.create(
+            owner_id=None,
+            name="每日队列测试词本",
+            level="junior",
+            type="system",
+            created_at=int(time.time() * 1000),
+        )
+        self.word = Word.objects.create(word="queue", translation="n. 队列")
+
+    def test_user_has_at_most_one_session_per_wordbook_per_day(self):
+        DailyStudySession.objects.create(
+            user_id=1, wordbook=self.wordbook, study_date=date.today(),
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                DailyStudySession.objects.create(
+                    user_id=1, wordbook=self.wordbook, study_date=date.today(),
+                )
+
+    def test_retry_item_cannot_create_another_retry(self):
+        session = DailyStudySession.objects.create(
+            user_id=1, wordbook=self.wordbook, study_date=date.today(),
+        )
+        original = DailyStudySessionItem.objects.create(
+            session=session,
+            position=0,
+            kind=DailyStudySessionItem.Kind.WORD_NEW,
+            word=self.word,
+        )
+        retry = DailyStudySessionItem.objects.create(
+            session=session,
+            position=1,
+            kind=DailyStudySessionItem.Kind.WORD_NEW,
+            word=self.word,
+            retry_of=original,
+        )
+        self.assertTrue(retry.is_retry)
+        self.assertFalse(retry.can_retry)
+
+
+class DailyStudySessionAPITest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {make_test_token(1)}")
+        self.wordbook = Wordbook.objects.create(
+            owner_id=None, name="每日会话 API 测试", level="junior", type="system", created_at=0,
+        )
+        self.due_word = Word.objects.create(word="due", translation="到期词")
+        self.new_word = Word.objects.create(
+            word="new", translation="新词", phrases=[{"phrase": "new phrase", "meaning": "新词组"}],
+        )
+        WordbookWord.objects.create(wordbook=self.wordbook, word=self.due_word)
+        WordbookWord.objects.create(wordbook=self.wordbook, word=self.new_word)
+        UserWordProgress.objects.create(
+            user_id=1, wordbook=self.wordbook, word=self.due_word, due=0,
+        )
+        UserSettings.objects.create(user_id=1, daily_new_word_goal=1, daily_phrase_goal=1)
+
+    def test_creates_fixed_queue_and_grades_idempotently(self):
+        resp = self.client.get(f"/api/sessions/today/?wordbook_id={self.wordbook.id}")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual([item["kind"] for item in data["items"]], ["word_review", "word_new", "phrase"])
+        self.assertEqual(data["items"][2]["phrase"], "new phrase")
+
+        session_id = data["id"]
+        resp = self.client.post(f"/api/sessions/{session_id}/items/0/grade/", {"grade": 0}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["current_position"], 1)
+        self.assertEqual(StudyLog.objects.count(), 1)
+
+        # 同一位置重复提交只返回既有会话状态，不重复计分或追加重试。
+        resp = self.client.post(f"/api/sessions/{session_id}/items/0/grade/", {"grade": 0}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(StudyLog.objects.count(), 1)
+        self.assertEqual(DailyStudySessionItem.objects.filter(session_id=session_id).count(), 4)
+
+        # 原始错误题在尾部只追加一次；重试题再错不会再生一题。
+        retry = DailyStudySessionItem.objects.get(session_id=session_id, retry_of__isnull=False)
+        DailyStudySessionItem.objects.filter(session_id=session_id).update(status="completed")
+        DailyStudySessionItem.objects.filter(pk=retry.pk).update(status="pending")
+        DailyStudySession.objects.filter(pk=session_id).update(current_position=retry.position)
+        resp = self.client.post(f"/api/sessions/{session_id}/items/{retry.position}/grade/", {"grade": 0}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(DailyStudySessionItem.objects.filter(session_id=session_id).count(), 4)
 
 
 class WordbookAPITest(TestCase):
@@ -221,6 +321,7 @@ class UserSettingsAPITest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["daily_new_word_goal"], 20)
         self.assertEqual(resp.json()["daily_quiz_goal"], 20)
+        self.assertEqual(resp.json()["daily_phrase_goal"], 10)
         self.assertTrue(resp.json()["show_daily_plan"])
 
         # 只更新新词目标不应覆盖新增设置
@@ -233,18 +334,20 @@ class UserSettingsAPITest(TestCase):
         # 可独立更新练习目标和每日计划开关
         resp = self.client.post(
             "/api/settings/",
-            {"daily_quiz_goal": 12, "show_daily_plan": False},
+            {"daily_quiz_goal": 12, "daily_phrase_goal": 8, "show_daily_plan": False},
             format="json",
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["daily_new_word_goal"], 35)
         self.assertEqual(resp.json()["daily_quiz_goal"], 12)
+        self.assertEqual(resp.json()["daily_phrase_goal"], 8)
         self.assertFalse(resp.json()["show_daily_plan"])
 
         # 再读应持久化
         resp = self.client.get("/api/settings/")
         self.assertEqual(resp.json()["daily_new_word_goal"], 35)
         self.assertEqual(resp.json()["daily_quiz_goal"], 12)
+        self.assertEqual(resp.json()["daily_phrase_goal"], 8)
         self.assertFalse(resp.json()["show_daily_plan"])
 
         # 隔离：另一用户仍是默认
@@ -253,6 +356,7 @@ class UserSettingsAPITest(TestCase):
         resp = other.get("/api/settings/")
         self.assertEqual(resp.json()["daily_new_word_goal"], 20)
         self.assertEqual(resp.json()["daily_quiz_goal"], 20)
+        self.assertEqual(resp.json()["daily_phrase_goal"], 10)
         self.assertTrue(resp.json()["show_daily_plan"])
 
     def test_invalid_goal_rejected(self):

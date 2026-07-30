@@ -35,6 +35,7 @@ export default function ProfileScreen() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [goalInput, setGoalInput] = useState('20');
+  const [phraseGoalInput, setPhraseGoalInput] = useState('10');
   const [showDailyPlan, setShowDailyPlan] = useState(true);
 
   useFocusEffect(
@@ -81,6 +82,7 @@ export default function ProfileScreen() {
       (async () => {
         const settings = await getDailySettings(user.id);
         setGoalInput(String(settings.dailyNewWordGoal));
+        setPhraseGoalInput(String(settings.dailyPhraseGoal));
         setShowDailyPlan(settings.showDailyPlan);
       })();
     }, [user]),
@@ -92,6 +94,15 @@ export default function ProfileScreen() {
     const n = parseInt(text, 10);
     if (Number.isFinite(n) && n >= 0) {
       await setDailySettings(user.id, { dailyNewWordGoal: n });
+    }
+  };
+
+  const handlePhraseGoalChange = async (text: string) => {
+    setPhraseGoalInput(text);
+    if (!user) return;
+    const n = parseInt(text, 10);
+    if (Number.isFinite(n) && n > 0) {
+      await setDailySettings(user.id, { dailyPhraseGoal: n });
     }
   };
 
@@ -213,6 +224,22 @@ export default function ProfileScreen() {
             onChangeText={handleGoalChange}
             keyboardType="numeric"
             placeholder="20"
+            placeholderTextColor={colors.subtitle}
+          />
+          <Text style={[styles.goalLabel, { color: colors.text }]}>每日词组总量</Text>
+          <TextInput
+            style={[
+              styles.goalInput,
+              {
+                backgroundColor: colors.inputBackground,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            value={phraseGoalInput}
+            onChangeText={handlePhraseGoalChange}
+            keyboardType="numeric"
+            placeholder="10"
             placeholderTextColor={colors.subtitle}
           />
           <TouchableOpacity onPress={() => { const next = !showDailyPlan; setShowDailyPlan(next); if (user) setDailySettings(user.id, { showDailyPlan: next }); }} style={styles.planToggle}>

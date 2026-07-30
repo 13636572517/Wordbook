@@ -24,7 +24,15 @@ import { getLanguageByCode } from '@/lib/languages';
 import { useSession } from '@/components/SessionProvider';
 import FlashCard from '@/components/FlashCard';
 import { speakWord } from '@/lib/speech';
-import { fetchDuePhraseCards, fetchWordDetail, recordPhraseProgress, type PhraseProgressCard } from '@/lib/data/httpRepo';
+import {
+  fetchDuePhraseCards,
+  fetchTodayStudySession,
+  fetchWordDetail,
+  gradeDailySessionItem,
+  recordPhraseProgress,
+  type DailyStudySession,
+  type PhraseProgressCard,
+} from '@/lib/data/httpRepo';
 import QuizRunner from '@/components/QuizRunner';
 import { useWebAlert } from '@/components/WebAlert';
 import { advanceExtraPractice, nextExtraBatchStep } from '@/lib/extraPractice';
@@ -56,6 +64,9 @@ export default function HomeScreen() {
   const [word, setWord] = useState<Word | null>(null);
   const [phraseQueue, setPhraseQueue] = useState<PhraseProgressCard[]>([]);
   const [isPhraseSaving, setIsPhraseSaving] = useState(false);
+  const [isSessionSaving, setIsSessionSaving] = useState(false);
+  const [dailySession, setDailySession] = useState<DailyStudySession | null>(null);
+  const [phraseFlipped, setPhraseFlipped] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
   const [stats, setStats] = useState<WordbookStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,6 +114,43 @@ export default function HomeScreen() {
     setLoadError(null);
     const now = Date.now();
     try {
+      const inExtra = extraRemainingRef.current != null && extraRemainingRef.current > 0;
+      if (isCloud && !inExtra) {
+        const [session, s] = await Promise.all([
+          fetchTodayStudySession(wordbook.id),
+          repo.getWordbookStats(user.id, wordbook.id, now),
+        ]);
+        const item = session.currentItem;
+        setDailySession(session);
+        setStats(s);
+        setPhraseFlipped(false);
+        if (item?.kind === 'phrase') {
+          setPhraseQueue([{ wordId: item.wordId, phraseKey: item.phraseKey, phrase: item.phrase, meaning: item.meaning }]);
+          setWord(null);
+        } else if (item) {
+          setPhraseQueue([]);
+          const nextWord: Word = {
+            id: item.wordId,
+            word: item.word,
+            translation: item.translation,
+            pronunciation: item.pronunciation ?? null,
+            phonetic: item.pronunciation,
+          };
+          setWord(nextWord);
+          setReps(item.kind === 'word_review' ? 1 : 0);
+          setIsReview(item.kind === 'word_review');
+          setIsFlipped(false);
+          setCardKey((k) => k + 1);
+          speakWord(nextWord.word, ENGLISH);
+        } else {
+          setPhraseQueue([]);
+          setWord(null);
+          hasWordRef.current = false;
+        }
+        setLoading(false);
+        refreshDailyProgress();
+        return;
+      }
       // 每日新词上限：并行取全局目标值与今日已学新词数（getDailyNewWordGoal 走 AsyncStorage）
       const [goal, todayCount] = await Promise.all([
         getDailyNewWordGoal(user.id),
@@ -120,7 +168,6 @@ export default function HomeScreen() {
         }
       }
       // 加练模式下绕过每日新词上限
-      const inExtra = extraRemainingRef.current != null && extraRemainingRef.current > 0;
       // 每日新词目标完成后不立即结束：继续加载到期复习词，
       // 直到复习词也全部学完，getNextQuizWord 返回 null 时才显示"今日已学完"。
       // （allowNew 由 effectiveCount >= effectiveGoal 自动变为 false，无需 early return）
@@ -213,6 +260,20 @@ export default function HomeScreen() {
 
   const handleGrade = async (grade: Grade) => {
     if (word && user && wordbook) {
+      if (isCloud && dailySession?.currentItem && extraRemainingRef.current == null) {
+        if (isSessionSaving) return;
+        setIsSessionSaving(true);
+        try {
+          await gradeDailySessionItem(dailySession.id, dailySession.currentItem.position, grade);
+          await loadNext();
+        } catch (e) {
+          console.warn('每日学习评分失败', e);
+          webAlert('保存失败', '学习进度未保存，请重试。');
+        } finally {
+          setIsSessionSaving(false);
+        }
+        return;
+      }
       const now = Date.now();
       // 新词判定：此前无进度即首次学习，记录 isNew 供每日新词上限统计
       const existing = await repo.getProgress(user.id, wordbook.id, word.id);
@@ -271,6 +332,19 @@ export default function HomeScreen() {
 
   const handlePhraseGrade = async (grade: Grade) => {
     if (!wordbook || phraseQueue.length === 0 || isPhraseSaving) return;
+    if (isCloud && dailySession?.currentItem?.kind === 'phrase' && extraRemainingRef.current == null) {
+      setIsPhraseSaving(true);
+      try {
+        await gradeDailySessionItem(dailySession.id, dailySession.currentItem.position, grade);
+        await loadNext();
+      } catch (e) {
+        console.warn('每日词组评分失败', e);
+        webAlert('保存失败', '词组学习进度未保存，请重试。');
+      } finally {
+        setIsPhraseSaving(false);
+      }
+      return;
+    }
     const currentQueueLength = phraseQueue.length;
     setIsPhraseSaving(true);
     try {
@@ -703,11 +777,11 @@ export default function HomeScreen() {
       {!reviewPhase && !extraDecisionPending && phraseQueue.length > 0 ? (
         <View style={styles.cardArea}>
           <Text style={[styles.masteryHint, { color: colors.subtitle }]}>词组学习</Text>
-          <View style={[styles.phraseCard, { backgroundColor: colors.card }]}>
+          <TouchableOpacity style={[styles.phraseCard, { backgroundColor: colors.card }]} onPress={() => setPhraseFlipped(true)} activeOpacity={0.8}>
             <Text style={[styles.phraseText, { color: colors.text }]}>{phraseQueue[0].phrase}</Text>
-            <Text style={[styles.phraseMeaning, { color: colors.subtitle }]}>{phraseQueue[0].meaning}</Text>
-          </View>
-          <View style={styles.gradeRow}>{GRADES.map((g) => <TouchableOpacity key={g.grade} style={[styles.gradeButton, { backgroundColor: g.color }, isPhraseSaving && styles.gradeButtonDisabled]} onPress={() => handlePhraseGrade(g.grade)} disabled={isPhraseSaving}><Text style={styles.gradeText}>{isPhraseSaving ? '保存中' : g.label}</Text></TouchableOpacity>)}</View>
+            {phraseFlipped && <Text style={[styles.phraseMeaning, { color: colors.subtitle }]}>{phraseQueue[0].meaning}</Text>}
+          </TouchableOpacity>
+          {phraseFlipped ? <View style={styles.gradeRow}>{GRADES.map((g) => <TouchableOpacity key={g.grade} style={[styles.gradeButton, { backgroundColor: g.color }, isPhraseSaving && styles.gradeButtonDisabled]} onPress={() => handlePhraseGrade(g.grade)} disabled={isPhraseSaving}><Text style={styles.gradeText}>{isPhraseSaving ? '保存中' : g.label}</Text></TouchableOpacity>)}</View> : <Text style={[styles.hint, { color: colors.pinyin }]}>点击卡片查看释义</Text>}
         </View>
       ) : !reviewPhase && !extraDecisionPending && !word ? (
         <ScrollView
@@ -783,6 +857,7 @@ export default function HomeScreen() {
                     key={g.grade}
                     style={[styles.gradeButton, { backgroundColor: g.color }]}
                     onPress={() => handleGrade(g.grade)}
+                    disabled={isSessionSaving}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.gradeText}>{g.label}</Text>

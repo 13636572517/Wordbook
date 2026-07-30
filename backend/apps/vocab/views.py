@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 
-from django.db import connection
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.utils import timezone
@@ -21,7 +21,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .admin_check import is_admin_user, is_teacher_or_admin
-from .models import StudyLog, UserPhraseProgress, UserSettings, UserWordProgress, Word, Wordbook, WordbookWord
+from .models import (
+    DailyStudySession,
+    DailyStudySessionItem,
+    StudyLog,
+    UserPhraseProgress,
+    UserSettings,
+    UserWordProgress,
+    Word,
+    Wordbook,
+    WordbookWord,
+)
 from .serializers import (
     ProgressUpdateItem,
     StudyLogSerializer,
@@ -397,6 +407,279 @@ class StudyLogListView(APIView):
         return Response(serializer.data)
 
 
+def _phrase_key(word_id, phrase):
+    return f"{word_id}:{phrase.strip().lower()}"
+
+
+def _session_item_data(item):
+    return {
+        "position": item.position,
+        "kind": item.kind,
+        "status": item.status,
+        "word_id": item.word_id,
+        "word": item.word.word,
+        "translation": item.word.translation,
+        "pronunciation": item.word.pronunciation,
+        "phrase_key": item.phrase_key,
+        "phrase": item.phrase,
+        "meaning": item.meaning,
+        "is_retry": item.is_retry,
+    }
+
+
+def _session_data(session):
+    items = list(session.items.select_related("word").order_by("position"))
+    pending = next((item for item in items if item.status == DailyStudySessionItem.Status.PENDING), None)
+    return {
+        "id": session.id,
+        "status": session.status,
+        "current_position": session.current_position,
+        "items": [_session_item_data(item) for item in items],
+        "current_item": _session_item_data(pending) if pending else None,
+        "summary": {
+            "total": len(items),
+            "completed": sum(item.status == DailyStudySessionItem.Status.COMPLETED for item in items),
+            "remaining": sum(item.status == DailyStudySessionItem.Status.PENDING for item in items),
+        },
+    }
+
+
+def _apply_word_grade(user_id, wordbook_id, word_id, grade, now_ms):
+    """服务端版 SM-2，供每日会话统一写入单词进度。"""
+    progress, _ = UserWordProgress.objects.get_or_create(
+        user_id=user_id,
+        wordbook_id=wordbook_id,
+        word_id=word_id,
+        defaults={"due": now_ms},
+    )
+    quality = grade + 2
+    if quality < 3:
+        progress.repetitions = 0
+        progress.interval = 0
+        progress.ef = max(1.3, progress.ef - 0.2)
+        progress.wrong += 1
+    else:
+        progress.interval = (
+            1 if progress.repetitions == 0 else
+            3 if progress.repetitions == 1 else
+            max(1, round(progress.interval * (1.2 if grade == 1 else progress.ef)))
+        )
+        progress.repetitions += 1
+        progress.correct += 1
+    progress.due = now_ms + progress.interval * 86400000
+    progress.save()
+
+
+def _apply_phrase_grade(user_id, wordbook_id, item, grade, now_ms):
+    progress, _ = UserPhraseProgress.objects.get_or_create(
+        user_id=user_id,
+        wordbook_id=wordbook_id,
+        phrase_key=item.phrase_key,
+        defaults={
+            "word_id": item.word_id,
+            "phrase": item.phrase,
+            "meaning": item.meaning,
+            "due": now_ms,
+        },
+    )
+    quality = grade + 2
+    if quality < 3:
+        progress.repetitions = 0
+        progress.interval = 0
+        progress.ef = max(1.3, progress.ef - 0.2)
+        progress.wrong += 1
+    else:
+        progress.interval = (
+            1 if progress.repetitions == 0 else
+            3 if progress.repetitions == 1 else
+            max(1, round(progress.interval * (1.2 if grade == 1 else progress.ef)))
+        )
+        progress.repetitions += 1
+        progress.correct += 1
+    progress.due = now_ms + progress.interval * 86400000
+    progress.phrase = item.phrase
+    progress.meaning = item.meaning
+    progress.save()
+
+
+class DailyStudySessionTodayView(APIView):
+    """读取或创建当天固定的单词优先、词组收尾学习队列。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        wordbook_id = request.query_params.get("wordbook_id")
+        if not wordbook_id:
+            return Response({"error": "wordbook_id 不能为空"}, status=400)
+        user_id = request.user.id
+        try:
+            wordbook = Wordbook.objects.get(
+                Q(pk=wordbook_id) & (Q(owner_id__isnull=True) | Q(owner_id=user_id))
+            )
+        except Wordbook.DoesNotExist:
+            return Response({"error": "词本不存在"}, status=404)
+
+        today = datetime.now().date()
+        now_ms = int(time.time() * 1000)
+        try:
+            with transaction.atomic():
+                session, created = DailyStudySession.objects.select_for_update().get_or_create(
+                    user_id=user_id,
+                    wordbook=wordbook,
+                    study_date=today,
+                    defaults={"created_at": now_ms, "updated_at": now_ms},
+                )
+                if created:
+                    self._build_items(session, now_ms)
+        except IntegrityError:
+            session = DailyStudySession.objects.get(user_id=user_id, wordbook=wordbook, study_date=today)
+        return Response(_session_data(session))
+
+    @staticmethod
+    def _build_items(session, now_ms):
+        settings, _ = UserSettings.objects.get_or_create(user_id=session.user_id)
+        local_now = datetime.now()
+        today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start_ms = int(today_start.timestamp() * 1000)
+        learned_today = set(StudyLog.objects.filter(
+            user_id=session.user_id, is_new=True, ts__gte=today_start_ms,
+        ).values_list("word_id", flat=True))
+        remaining_new = max(settings.daily_new_word_goal - len(learned_today), 0)
+
+        due_progress = list(UserWordProgress.objects.filter(
+            user_id=session.user_id, wordbook=session.wordbook, due__lte=now_ms,
+        ).select_related("word").order_by("due", "word__word"))
+        due_word_ids = {progress.word_id for progress in due_progress}
+        new_links = list(WordbookWord.objects.filter(wordbook=session.wordbook).exclude(
+            word_id__in=due_word_ids
+        ).exclude(
+            word_id__in=UserWordProgress.objects.filter(
+                user_id=session.user_id, wordbook=session.wordbook,
+            ).values("word_id")
+        ).select_related("word").order_by("word__word")[:remaining_new])
+
+        rows = []
+        for progress in due_progress:
+            rows.append({"kind": DailyStudySessionItem.Kind.WORD_REVIEW, "word": progress.word})
+        for link in new_links:
+            rows.append({"kind": DailyStudySessionItem.Kind.WORD_NEW, "word": link.word})
+
+        phrase_limit = settings.daily_phrase_goal
+        scheduled_keys = set()
+        for link in new_links:
+            if len(scheduled_keys) >= phrase_limit:
+                break
+            for raw in link.word.phrases or []:
+                phrase = str(raw.get("phrase", "")).strip() if isinstance(raw, dict) else ""
+                if not phrase:
+                    continue
+                key = _phrase_key(link.word_id, phrase)
+                scheduled_keys.add(key)
+                rows.append({
+                    "kind": DailyStudySessionItem.Kind.PHRASE,
+                    "word": link.word,
+                    "phrase_key": key,
+                    "phrase": phrase,
+                    "meaning": str(raw.get("meaning", "")).strip(),
+                })
+                break
+
+        if len(scheduled_keys) < phrase_limit:
+            due_phrases = UserPhraseProgress.objects.filter(
+                user_id=session.user_id, wordbook=session.wordbook, due__lte=now_ms,
+            ).select_related("word").order_by("due", "id")
+            for progress in due_phrases:
+                if len(scheduled_keys) >= phrase_limit:
+                    break
+                if progress.phrase_key in scheduled_keys:
+                    continue
+                scheduled_keys.add(progress.phrase_key)
+                rows.append({
+                    "kind": DailyStudySessionItem.Kind.PHRASE,
+                    "word": progress.word,
+                    "phrase_key": progress.phrase_key,
+                    "phrase": progress.phrase,
+                    "meaning": progress.meaning,
+                })
+
+        DailyStudySessionItem.objects.bulk_create([
+            DailyStudySessionItem(session=session, position=position, **row)
+            for position, row in enumerate(rows)
+        ])
+
+
+class DailyStudySessionGradeView(APIView):
+    """原子提交每日队列中的单项评分；重复请求可安全重放。"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, session_id, position):
+        try:
+            grade = int(request.data.get("grade"))
+        except (TypeError, ValueError):
+            return Response({"error": "grade 必须为 0-3 的整数"}, status=400)
+        if grade not in (0, 1, 2, 3):
+            return Response({"error": "grade 必须为 0-3 的整数"}, status=400)
+
+        now_ms = int(time.time() * 1000)
+        with transaction.atomic():
+            try:
+                session = DailyStudySession.objects.select_for_update().get(
+                    pk=session_id, user_id=request.user.id,
+                )
+                item = DailyStudySessionItem.objects.select_for_update().select_related("word").get(
+                    session=session, position=position,
+                )
+            except (DailyStudySession.DoesNotExist, DailyStudySessionItem.DoesNotExist):
+                return Response({"error": "学习会话项不存在"}, status=404)
+
+            if item.status == DailyStudySessionItem.Status.COMPLETED:
+                return Response(_session_data(session))
+            if session.status == DailyStudySession.Status.COMPLETED or position != session.current_position:
+                return Response({"error": "请按当前学习顺序完成"}, status=409)
+
+            if item.kind == DailyStudySessionItem.Kind.PHRASE:
+                _apply_phrase_grade(request.user.id, session.wordbook_id, item, grade, now_ms)
+            else:
+                _apply_word_grade(request.user.id, session.wordbook_id, item.word_id, grade, now_ms)
+            StudyLog.objects.create(
+                user_id=request.user.id,
+                wordbook_id=session.wordbook_id,
+                word_id=item.word_id,
+                grade=grade,
+                ts=now_ms,
+                source="study" if item.kind == DailyStudySessionItem.Kind.WORD_NEW else "review",
+                is_new=item.kind == DailyStudySessionItem.Kind.WORD_NEW,
+            )
+            item.status = DailyStudySessionItem.Status.COMPLETED
+            item.grade = grade
+            item.completed_at = now_ms
+            item.save(update_fields=["status", "grade", "completed_at"])
+
+            if grade == 0 and item.can_retry:
+                last_position = DailyStudySessionItem.objects.filter(session=session).order_by("-position").values_list("position", flat=True).first()
+                DailyStudySessionItem.objects.create(
+                    session=session,
+                    position=(last_position or 0) + 1,
+                    kind=item.kind,
+                    word=item.word,
+                    phrase_key=item.phrase_key,
+                    phrase=item.phrase,
+                    meaning=item.meaning,
+                    retry_of=item,
+                )
+
+            next_item = DailyStudySessionItem.objects.filter(
+                session=session, status=DailyStudySessionItem.Status.PENDING,
+            ).order_by("position").first()
+            session.current_position = next_item.position if next_item else (item.position + 1)
+            session.updated_at = now_ms
+            if next_item is None:
+                session.status = DailyStudySession.Status.COMPLETED
+            session.save(update_fields=["current_position", "updated_at", "status"])
+        return Response(_session_data(session))
+
+
 class PhraseProgressView(APIView):
     """词组卡独立 SM-2 进度。"""
 
@@ -455,6 +738,7 @@ class UserSettingsView(APIView):
             defaults={
                 "daily_new_word_goal": 20,
                 "daily_quiz_goal": 20,
+                "daily_phrase_goal": 10,
                 "show_daily_plan": True,
             },
         )
@@ -467,6 +751,7 @@ class UserSettingsView(APIView):
         for field, label in (
             ("daily_new_word_goal", "daily_new_word_goal"),
             ("daily_quiz_goal", "daily_quiz_goal"),
+            ("daily_phrase_goal", "daily_phrase_goal"),
         ):
             if field not in data:
                 continue

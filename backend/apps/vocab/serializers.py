@@ -62,7 +62,7 @@ class StudyLogSerializer(serializers.ModelSerializer):
 class UserSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserSettings
-        fields = ["user_id", "daily_new_word_goal", "daily_quiz_goal", "show_daily_plan"]
+        fields = ["user_id", "daily_new_word_goal", "daily_quiz_goal", "daily_phrase_goal", "show_daily_plan"]
         read_only_fields = ["user_id"]
 
 

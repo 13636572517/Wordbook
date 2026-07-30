@@ -4,15 +4,18 @@ const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 
 export const DAILY_GOAL_DEFAULT = 20;
 export const DAILY_QUIZ_GOAL_DEFAULT = 20;
+export const DAILY_PHRASE_GOAL_DEFAULT = 10;
 export interface DailySettings {
   dailyNewWordGoal: number;
   dailyQuizGoal: number;
+  dailyPhraseGoal: number;
   showDailyPlan: boolean;
 }
 
 export const DEFAULT_DAILY_SETTINGS: DailySettings = {
   dailyNewWordGoal: DAILY_GOAL_DEFAULT,
   dailyQuizGoal: DAILY_QUIZ_GOAL_DEFAULT,
+  dailyPhraseGoal: DAILY_PHRASE_GOAL_DEFAULT,
   showDailyPlan: true,
 };
 
@@ -35,6 +38,7 @@ function normalizeSettings(value: Partial<DailySettings> | null | undefined): Da
   return {
     dailyNewWordGoal: positiveInt(value?.dailyNewWordGoal, DAILY_GOAL_DEFAULT),
     dailyQuizGoal: positiveInt(value?.dailyQuizGoal, DAILY_QUIZ_GOAL_DEFAULT),
+    dailyPhraseGoal: positiveInt(value?.dailyPhraseGoal, DAILY_PHRASE_GOAL_DEFAULT),
     showDailyPlan: value?.showDailyPlan !== false,
   };
 }

@@ -195,6 +195,7 @@ class UserSettings(models.Model):
     user_id = models.BigIntegerField(db_index=True, unique=True)
     daily_new_word_goal = models.IntegerField(default=20, help_text="每日新学单词数上限")
     daily_quiz_goal = models.IntegerField(default=20, help_text="每日智能练习题数目标")
+    daily_phrase_goal = models.IntegerField(default=10, help_text="每日词组学习与复习总数")
     show_daily_plan = models.BooleanField(default=True, help_text="是否显示每日学习计划")
 
     class Meta:
@@ -202,3 +203,79 @@ class UserSettings(models.Model):
 
     def __str__(self):
         return f"user={self.user_id} goal={self.daily_new_word_goal}"
+
+
+class DailyStudySession(models.Model):
+    """用户某词本在某日唯一且固定的学习队列。"""
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "进行中"
+        COMPLETED = "completed", "已完成"
+
+    user_id = models.BigIntegerField(db_index=True)
+    wordbook = models.ForeignKey(
+        Wordbook, on_delete=models.CASCADE, related_name="daily_study_sessions",
+    )
+    study_date = models.DateField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    current_position = models.PositiveIntegerField(default=0)
+    created_at = models.BigIntegerField(default=0)
+    updated_at = models.BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "daily_study_sessions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id", "wordbook", "study_date"],
+                name="uq_daily_session_user_wordbook_date",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user_id", "study_date"], name="idx_daily_session_user_date"),
+        ]
+
+
+class DailyStudySessionItem(models.Model):
+    """每日学习会话中的不可变题目快照。"""
+
+    class Kind(models.TextChoices):
+        WORD_REVIEW = "word_review", "单词复习"
+        WORD_NEW = "word_new", "学习新词"
+        PHRASE = "phrase", "词组学习或复习"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "待学习"
+        COMPLETED = "completed", "已完成"
+
+    session = models.ForeignKey(
+        DailyStudySession, on_delete=models.CASCADE, related_name="items",
+    )
+    position = models.PositiveIntegerField()
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    word = models.ForeignKey(Word, on_delete=models.CASCADE, related_name="daily_session_items")
+    phrase_key = models.CharField(max_length=64, blank=True, default="")
+    phrase = models.CharField(max_length=255, blank=True, default="")
+    meaning = models.TextField(blank=True, default="")
+    retry_of = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="retry_items",
+    )
+    grade = models.SmallIntegerField(null=True, blank=True)
+    completed_at = models.BigIntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "daily_study_session_items"
+        constraints = [
+            models.UniqueConstraint(fields=["session", "position"], name="uq_daily_session_item_position"),
+        ]
+        indexes = [
+            models.Index(fields=["session", "status", "position"], name="idx_daily_session_item_status"),
+        ]
+
+    @property
+    def is_retry(self):
+        return self.retry_of_id is not None
+
+    @property
+    def can_retry(self):
+        return not self.is_retry
