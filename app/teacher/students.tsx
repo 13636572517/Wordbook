@@ -63,7 +63,7 @@ export default function TeacherStudentsScreen() {
         <Text style={[styles.errorText, { color: colors.subtitle }]}>仅教师/管理员可查看</Text>
         <TouchableOpacity
           style={[styles.backBtn, { backgroundColor: colors.card }]}
-          onPress={() => router.back()}
+          onPress={() => router.replace('/(tabs)')}
           activeOpacity={0.7}
         >
           <FontAwesome name="arrow-left" size={14} color={colors.tint} />
@@ -77,7 +77,7 @@ export default function TeacherStudentsScreen() {
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.replace('/(tabs)')} activeOpacity={0.7} style={styles.backBtn}>
           <FontAwesome name="arrow-left" size={16} color={colors.tint} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>学员学习情况</Text>
