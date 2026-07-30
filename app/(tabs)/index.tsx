@@ -531,6 +531,9 @@ export default function HomeScreen() {
     loadNext();
   }, [loadNext]);
 
+  const sessionIsComplete = isCloud && dailySession?.status === 'completed';
+  const sessionNewWordCount = dailySession?.items.filter((item) => item.kind === 'word_new').length ?? 0;
+
   if (loadError) {
     return (
       <View
@@ -796,16 +799,18 @@ export default function HomeScreen() {
           style={styles.emptyScroll}
           contentContainerStyle={styles.emptyContainer}
         >
-          {todayCountRef.current >= dailyGoalRef.current && dailyGoalRef.current > 0 ? (
+          {sessionIsComplete || (todayCountRef.current >= dailyGoalRef.current && dailyGoalRef.current > 0) ? (
             <>
               <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>🎯</Text>
               <Text style={[styles.emptyTitle, { color: colors.text }]}>
-                今日新词已学完
+                今日学习已完成
               </Text>
               <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
-                已完成 {todayCountRef.current} 个新词{reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}
+                {sessionIsComplete
+                  ? `已完成 ${dailySession?.summary.completed ?? 0} 项学习${reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}`
+                  : `已完成 ${todayCountRef.current} 个新词${reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}`}
               </Text>
-              {!reviewCompleted && (
+              {!reviewCompleted && (!sessionIsComplete || sessionNewWordCount > 0) && (
                 <TouchableOpacity
                   style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]}
                   onPress={startReview}
