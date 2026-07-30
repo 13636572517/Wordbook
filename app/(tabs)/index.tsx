@@ -457,7 +457,12 @@ export default function HomeScreen() {
 
   useEffect(() => {
     const consolidation = dailySession?.consolidation;
-    if (dailySession?.status === 'completed' && consolidation && reviewPhase == null) {
+    if (
+      dailySession?.status === 'completed'
+      && consolidation
+      && consolidation.phase !== 'completed'
+      && reviewPhase == null
+    ) {
       void resumeConsolidation(consolidation);
     }
   }, [dailySession?.id, dailySession?.status, dailySession?.consolidation, reviewPhase, resumeConsolidation]);
