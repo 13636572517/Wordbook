@@ -7,6 +7,6 @@ export function advanceExtraPractice(
   return { remaining: next, finished: next === 0 };
 }
 
-export function nextExtraBatchStep(finished: boolean): 'decision' | 'continue' {
-  return finished ? 'decision' : 'continue';
+export function nextExtraBatchStep(finished: boolean): 'review' | 'continue' {
+  return finished ? 'review' : 'continue';
 }

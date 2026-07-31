@@ -7,7 +7,7 @@ assert.deepStrictEqual(
   { remaining: 9, finished: false },
   'a newly learned extra word decrements the remaining count even when another card follows',
 );
-assert.strictEqual(nextExtraBatchStep(true), 'decision', 'a completed extra batch waits for an explicit decision');
+assert.strictEqual(nextExtraBatchStep(true), 'review', 'a completed extra batch starts consolidation automatically');
 assert.strictEqual(nextExtraBatchStep(false), 'continue', 'an unfinished extra batch continues learning');
 assert.deepStrictEqual(
   advanceExtraPractice(1, true),

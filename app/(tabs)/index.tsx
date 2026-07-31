@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   TouchableOpacity,
@@ -81,6 +81,8 @@ export default function HomeScreen() {
   // 加练模式：null=未激活，number=本轮剩余新词数（每轮10个，可多轮）
   const [extraRemaining, setExtraRemaining] = useState<number | null>(null);
   const [extraDecisionPending, setExtraDecisionPending] = useState(false);
+  const [extraReviewReady, setExtraReviewReady] = useState(false);
+  const [extraQuizPosition, setExtraQuizPosition] = useState(0);
   const extraRemainingRef = useRef<number | null>(null);
   // 加练模式：追踪本轮学过的词 ID，结束时用于单独巩固
   const extraWordIdsRef = useRef<Set<string>>(new Set());
@@ -351,7 +353,7 @@ export default function HomeScreen() {
           setWord(null);
         } else {
           extraReviewPendingRef.current = false;
-          setExtraDecisionPending(nextExtraBatchStep(true) === 'decision');
+          if (nextExtraBatchStep(true) === 'review') setExtraReviewReady(true);
         }
         return;
       }
@@ -386,7 +388,7 @@ export default function HomeScreen() {
       if (currentQueueLength <= 1) {
         if (extraReviewPendingRef.current) {
           extraReviewPendingRef.current = false;
-          setExtraDecisionPending(nextExtraBatchStep(true) === 'decision');
+          if (nextExtraBatchStep(true) === 'review') setExtraReviewReady(true);
         } else {
           await loadNext();
         }
@@ -481,6 +483,7 @@ export default function HomeScreen() {
             extraReviewPendingRef.current = false;
             deferredPhrasesRef.current = [];
             setExtraDecisionPending(false);
+            setExtraReviewReady(false);
             extraRemainingRef.current = 10;
             setExtraRemaining(10);
             loadNext();
@@ -533,8 +536,15 @@ export default function HomeScreen() {
     setReviewFlipped(false);
     setReviewChoiceScore(null);
     setReviewDictScore(null);
+    setExtraQuizPosition(0);
     setReviewPhase('flashcards');
   }, []);
+
+  useEffect(() => {
+    if (!extraReviewReady || reviewPhase != null) return;
+    setExtraReviewReady(false);
+    void startExtraReview();
+  }, [extraReviewReady, reviewPhase, startExtraReview]);
 
   // 闪卡复习：翻面
   const onReviewFlip = useCallback(() => {
@@ -588,6 +598,7 @@ export default function HomeScreen() {
   // 选择测试完成
   const onChoiceDone = useCallback((correct: number, total: number) => {
     setReviewChoiceScore({ correct, total });
+    setExtraQuizPosition(0);
     setReviewPhase('dictation');
   }, []);
 
@@ -614,7 +625,21 @@ export default function HomeScreen() {
 
   const sessionIsComplete = isCloud && dailySession?.status === 'completed';
   const consolidation = dailySession?.consolidation;
-  const learningProgress = consolidation && consolidation.phase !== 'completed'
+  const isExtraReview = extraWordIdsRef.current.size > 0;
+  const reviewQuizOptions = useMemo(
+    () => ({ wordIds: todayReviewWords.map((word) => word.id) }),
+    [todayReviewWords],
+  );
+  const extraLearningProgress = extraRemaining != null
+    ? reviewPhase === 'flashcards'
+      ? `加练巩固 · 新词闪卡 · 第 ${reviewFlashPass + 1}/3 轮 · ${reviewFlashIdx + 1}/${todayReviewWords.length}`
+      : reviewPhase === 'choice'
+        ? `加练巩固 · 选择释义 · ${extraQuizPosition + 1}/${todayReviewWords.length}`
+        : reviewPhase === 'dictation'
+          ? `加练巩固 · 单词默写 · ${extraQuizPosition + 1}/${todayReviewWords.length}`
+          : `加练新词 · ${10 - Math.max(extraRemaining, 0)}/10`
+    : null;
+  const learningProgress = extraLearningProgress ?? (consolidation && consolidation.phase !== 'completed'
     ? consolidation.phase === 'flashcards'
       ? `新词闪卡 · 第 ${consolidation.flashcardPass + 1}/3 轮 · ${consolidation.flashcardPosition + 1}/${consolidation.flashcardWordIds.length}`
       : consolidation.phase === 'choice'
@@ -622,7 +647,7 @@ export default function HomeScreen() {
         : `单词默写 · ${consolidation.dictationPosition + 1}/${consolidation.dictationWordIds.length}`
     : dailySession
       ? `学习队列 · ${dailySession.summary.completed}/${dailySession.summary.total}`
-      : null;
+      : null);
 
   if (loadError) {
     return (
@@ -790,13 +815,15 @@ export default function HomeScreen() {
       {reviewPhase === 'choice' && (
         <View style={{ flex: 1 }}>
           <QuizRunner
-            key={`choice-${dailySession?.consolidation?.choicePosition ?? 0}`}
+            key={isExtraReview ? 'choice-extra' : `choice-${dailySession?.consolidation?.choicePosition ?? 0}`}
             range="custom"
             types={['choice']}
-            opts={{ wordIds: todayReviewWords.map((w) => w.id) }}
-            initialIndex={dailySession?.consolidation?.choicePosition ?? 0}
+            opts={reviewQuizOptions}
+            initialIndex={isExtraReview ? 0 : dailySession?.consolidation?.choicePosition ?? 0}
             preserveOrder
-            onAdvance={() => advanceConsolidation('choice', dailySession?.consolidation?.choicePosition ?? 0)}
+            onAdvance={isExtraReview
+              ? (position) => setExtraQuizPosition(position + 1)
+              : () => advanceConsolidation('choice', dailySession?.consolidation?.choicePosition ?? 0)}
             onExit={(correct, total) => {
               // X 按钮无参数 → 退出复习；完成返回有分数 → 进入下一环节
               if (correct === undefined) { exitReview(); return; }
@@ -809,13 +836,15 @@ export default function HomeScreen() {
       {reviewPhase === 'dictation' && (
         <View style={{ flex: 1 }}>
           <QuizRunner
-            key={`dictation-${dailySession?.consolidation?.dictationPosition ?? 0}`}
+            key={isExtraReview ? 'dictation-extra' : `dictation-${dailySession?.consolidation?.dictationPosition ?? 0}`}
             range="custom"
             types={['dictation']}
-            opts={{ wordIds: todayReviewWords.map((w) => w.id) }}
-            initialIndex={dailySession?.consolidation?.dictationPosition ?? 0}
+            opts={reviewQuizOptions}
+            initialIndex={isExtraReview ? 0 : dailySession?.consolidation?.dictationPosition ?? 0}
             preserveOrder
-            onAdvance={() => advanceConsolidation('dictation', dailySession?.consolidation?.dictationPosition ?? 0)}
+            onAdvance={isExtraReview
+              ? (position) => setExtraQuizPosition(position + 1)
+              : () => advanceConsolidation('dictation', dailySession?.consolidation?.dictationPosition ?? 0)}
             onExit={(correct, total) => {
               if (correct === undefined) { exitReview(); return; }
               onDictDone(correct, total ?? 0);
