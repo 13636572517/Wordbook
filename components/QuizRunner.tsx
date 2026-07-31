@@ -94,6 +94,12 @@ export default function QuizRunner({
   const [idx, setIdx] = useState(0);
   const [results, setResults] = useState<ResultRow[]>([]);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  // 父组件通常以内联数组/对象传题型和选词范围。按内容生成签名，避免答题进度
+  // 引发父组件重渲染时把本轮题目初始化回第一题。
+  const quizTypesKey = types.join('|');
+  const quizWordIdsKey = opts?.wordIds?.join(',') ?? '';
+  const quizDays = opts?.days;
+  const questionPlanKey = questionPlan?.map((item) => `${item.wordId}:${item.type}`).join('|') ?? '';
 
   useEffect(() => {
     let cancelled = false;
@@ -191,7 +197,18 @@ export default function QuizRunner({
     return () => {
       cancelled = true;
     };
-  }, [user, wordbook, range, opts, types, limit, questionPlan, initialIndex, preserveOrder]);
+  }, [
+    user?.id,
+    wordbook?.id,
+    range,
+    quizWordIdsKey,
+    quizDays,
+    quizTypesKey,
+    limit,
+    questionPlanKey,
+    initialIndex,
+    preserveOrder,
+  ]);
 
   // 判定后：对=Good(2)/错=Again(0)，复用 reviewWord + 写 studylog(source:'quiz')
   const recordGrade = async (wordId: string, correct: boolean) => {
