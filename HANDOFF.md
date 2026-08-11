@@ -36,6 +36,7 @@
 
 ### 最近提交（main，新→旧）
 ```
+59e4c52 feat: 目标完成日期改用年/月/日滚轮选择器
 20a6b29 fix: 薄弱词展开改用 fetchWordDetail 取完整释义；建议条目去除点击行为
 e06d926 feat: Tab 薄弱词→进度；设置页新增目标完成日期
 0895a67 feat: 进度页（总体进度/需加强词/建议 三卡片 + 页内专项复习与练习）
@@ -704,3 +705,16 @@ todayCounts.ts、progressAdvice.ts、backend models/serializers/views + migratio
    已改为纯文本展示（移除 onPress / play 图标）。
 
 > 待定：薄弱词判定逻辑（"历史上掌握不牢靠"的口径）正在与用户讨论，尚未修改。
+
+## 28. 功能（2026-08-11）：目标完成日期滚轮选择器（`59e4c52`，已部署）
+
+**需求**：目标完成日期原为文本输入框（需手输 yyyy-mm-dd），改为可滚动的年/月/日选择器。
+
+**实现**：
+- 新建 `components/DateWheelPicker.tsx`：三列滚轮（年=当前-1~+3 年、月 1-12、日随年月自动收缩天数），
+  ScrollView snapToInterval 吸附 + 点选双模式，中央选中指示条，底部「清除/取消/确定」
+- `profile.tsx` 设置区：TextInput 换成可点击字段（显示已选日期或「未设置」）+ 弹窗滚轮选择，
+  确认后 `setDailySettings({ targetFinishDate })` 保存
+
+**关联说明**：「显示每日计划」开关控制学习首页的 DailyPlanModal（每天一次弹窗：
+未完成时显示今日任务进度与开始按钮；全部完成时显示完成庆祝+礼花）。关闭后不再弹窗。
