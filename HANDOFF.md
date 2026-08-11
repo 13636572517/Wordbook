@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-07-29（词组卡渲染优先级修复）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-08-11（「进度」Tab 上线：总体进度/需加强词/建议 + 目标完成日期）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -36,6 +36,15 @@
 
 ### 最近提交（main，新→旧）
 ```
+e06d926 feat: Tab 薄弱词→进度；设置页新增目标完成日期
+0895a67 feat: 进度页（总体进度/需加强词/建议 三卡片 + 页内专项复习与练习）
+c657699 feat: DailySettings 增加 targetFinishDate 目标完成日期
+8e4b2f3 feat: 学习建议规则引擎 buildAdvice（到期/薄弱/目标倒推/高峰预警）
+b41f90f feat: 今日学习计数 getTodayCounts（新词/复习/练习）
+9c459d6 feat(backend): UserSettings 新增 target_finish_date 目标完成日期字段
+4e5328d fix: preserve quiz progress across parent renders
+c010f6c fix: complete extra practice consolidation flow
+3b5ad02 fix: place learning progress above grade buttons
 b38684f fix: 词组卡渲染优先级提到空状态之前，修复学完单词后误显 All caught up
 27c8730 fix: loadNext 期间显示 loading 而非 All caught up，修复学习中断假象
 614f7e5 feat: 巩固闪卡+选择测验自动播放单词发音（中翻英类除外）
@@ -654,3 +663,34 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 - 教师端每日进度卡可进入单日详情，按单词聚合展示学习/练习/复习次数、正确/错误次数与最后活动。
 - 新增 `StudyLog.activity_type`（迁移 `vocab.0006_studylog_activity_type`）；新练习记录默写、选择、词组默写、词组填空或例句选择，历史空值归为“历史练习（题型未知）”。
 - 新增教师接口 `/api/teacher/students/<user_id>/daily/<YYYY-MM-DD>/detail/`，并将教师日正确率统一为 `grade >= 1`。
+
+## 26. 功能（2026-08-11）：「进度」Tab（替换薄弱词）+ 目标完成日期
+
+**需求**：将「薄弱词」Tab 升级为个人化「进度」分析页：总体进度、需加强的词（一键专项复习/练习）、
+规则化学习建议（含未来学习量规划）。设计规格 `docs/superpowers/specs/2026-08-11-progress-tab-design.md`，
+实现计划 `docs/superpowers/plans/2026-08-11-progress-tab.md`（superpowers brainstorming → writing-plans 产出）。
+
+**页面结构**（`app/(tabs)/progress.tsx`，单滚动三卡片）：
+1. **总体进度**：词本进度条（已学/总数%）、已掌握/学习中/待复习、今日新词 x/目标、今日复习 x 词、
+   今日练习 x/目标题、连续学习 streak
+2. **需加强的词**：复用 `getWeakWordIds`；每项带「错 N 次 · 错误率 X%」标签，可展开释义/词组/例句；
+   顶部「专项复习」（页内闪卡循环，`reviewWord` + study log source=review，自动播发音）与
+   「专项练习」（`<QuizRunner range="custom" opts={{wordIds}} types=[默写,选择,例句选择]>`）；
+   训练完成/退出后自动刷新三卡片
+3. **建议**：规则引擎 `lib/progressAdvice.ts` 输出条目，可点击动作直达训练：
+   - 到期提醒（due>0）/ 薄弱词加练（weak>0）
+   - 学习量规划：设了目标日期→倒推每日新词量；未设→按近 7 天均速推算剩余天数
+   - 复习高峰预警（未来 3 天任一天到期 >50 词）/ 全绿鼓励
+
+**新增模块**：
+- `lib/todayCounts.ts`：今日新词/复习/练习计数（单次 listStudyLogs 分类）
+- `lib/progressAdvice.ts`：建议规则引擎（纯函数，单测覆盖 6 类场景）
+- 测试：`lib/data/__tests__/today-counts.test.ts`、`progress-advice.test.ts`（npx tsx 运行）
+
+**目标完成日期**：
+- 后端 `UserSettings.target_finish_date`（DateField 可空，migration 0009），`/settings/` GET/POST 读写
+- 前端 `DailySettings.targetFinishDate`（yyyy-mm-dd 校验，非法回退 null）
+- 设置页（profile.tsx）可输入/清除
+
+**涉及文件**：progress.tsx（新）、_layout.tsx（Tab 名）、profile.tsx、settings.ts、httpRepo.ts、
+todayCounts.ts、progressAdvice.ts、backend models/serializers/views + migration
