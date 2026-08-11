@@ -489,6 +489,7 @@ export async function fetchDailySettings(_userId: ID): Promise<DailySettings> {
     dailyQuizGoal: Number(data.daily_quiz_goal) || DAILY_QUIZ_GOAL_DEFAULT,
     dailyPhraseGoal: Number(data.daily_phrase_goal) || DAILY_PHRASE_GOAL_DEFAULT,
     showDailyPlan: data.show_daily_plan !== false,
+    targetFinishDate: typeof data.target_finish_date === 'string' ? data.target_finish_date.slice(0, 10) : null,
   };
 }
 
@@ -501,6 +502,7 @@ export async function updateDailySettings(
   if (update.dailyQuizGoal != null) body.daily_quiz_goal = update.dailyQuizGoal;
   if (update.dailyPhraseGoal != null) body.daily_phrase_goal = update.dailyPhraseGoal;
   if (update.showDailyPlan != null) body.show_daily_plan = update.showDailyPlan;
+  if (update.targetFinishDate !== undefined) body.target_finish_date = update.targetFinishDate;
   await api('/settings/', { method: 'POST', body: JSON.stringify(body) });
 }
 

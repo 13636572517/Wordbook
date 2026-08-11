@@ -45,9 +45,17 @@ const mock = {
   await setDailySettings('u4', { dailyQuizGoal: 12, showDailyPlan: false });
   assert.deepStrictEqual(
     await getDailySettings('u4'),
-    { dailyNewWordGoal: 20, dailyQuizGoal: 12, showDailyPlan: false },
+    { dailyNewWordGoal: 20, dailyQuizGoal: 12, dailyPhraseGoal: 10, showDailyPlan: false, targetFinishDate: null },
     'partial daily settings update preserves the new-word goal',
   );
+
+  // targetFinishDate：设置/读回/清空/非法值回退 null
+  await setDailySettings('u5', { targetFinishDate: '2026-09-01' });
+  assert.strictEqual((await getDailySettings('u5')).targetFinishDate, '2026-09-01', 'target date set & read back');
+  await setDailySettings('u5', { targetFinishDate: null });
+  assert.strictEqual((await getDailySettings('u5')).targetFinishDate, null, 'target date cleared');
+  await setDailySettings('u5', { targetFinishDate: 'not-a-date' as unknown as null });
+  assert.strictEqual((await getDailySettings('u5')).targetFinishDate, null, 'invalid target date falls back to null');
 
   // 非法/缺失值回落默认
   mem.set('wb_daily_goal_u3', 'not-a-number');

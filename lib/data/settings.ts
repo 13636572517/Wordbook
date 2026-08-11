@@ -10,6 +10,8 @@ export interface DailySettings {
   dailyQuizGoal: number;
   dailyPhraseGoal: number;
   showDailyPlan: boolean;
+  /** 目标完成词本日期（ISO yyyy-mm-dd），null 表示未设置 */
+  targetFinishDate: string | null;
 }
 
 export const DEFAULT_DAILY_SETTINGS: DailySettings = {
@@ -17,6 +19,7 @@ export const DEFAULT_DAILY_SETTINGS: DailySettings = {
   dailyQuizGoal: DAILY_QUIZ_GOAL_DEFAULT,
   dailyPhraseGoal: DAILY_PHRASE_GOAL_DEFAULT,
   showDailyPlan: true,
+  targetFinishDate: null,
 };
 
 const legacyGoalKeyFor = (userId: string) => `wb_daily_goal_${userId}`;
@@ -34,12 +37,22 @@ function positiveInt(value: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 校验 yyyy-mm-dd；null/空/非法值一律回退 null */
+function normalizeTargetDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const v = value.slice(0, 10);
+  return ISO_DATE_RE.test(v) ? v : null;
+}
+
 function normalizeSettings(value: Partial<DailySettings> | null | undefined): DailySettings {
   return {
     dailyNewWordGoal: positiveInt(value?.dailyNewWordGoal, DAILY_GOAL_DEFAULT),
     dailyQuizGoal: positiveInt(value?.dailyQuizGoal, DAILY_QUIZ_GOAL_DEFAULT),
     dailyPhraseGoal: positiveInt(value?.dailyPhraseGoal, DAILY_PHRASE_GOAL_DEFAULT),
     showDailyPlan: value?.showDailyPlan !== false,
+    targetFinishDate: normalizeTargetDate(value?.targetFinishDate),
   };
 }
 
