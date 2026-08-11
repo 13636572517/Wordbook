@@ -886,6 +886,17 @@ class UserSettingsView(APIView):
                 return Response({"error": "show_daily_plan 必须为布尔值"}, status=400)
             updates["show_daily_plan"] = value
 
+        if "target_finish_date" in data:
+            value = data["target_finish_date"]
+            if value in (None, ""):
+                updates["target_finish_date"] = None
+            else:
+                import datetime as _dt
+                try:
+                    updates["target_finish_date"] = _dt.date.fromisoformat(str(value))
+                except ValueError:
+                    return Response({"error": "target_finish_date 格式需为 yyyy-mm-dd"}, status=400)
+
         if not updates:
             return Response({"error": "至少提供一个设置项"}, status=400)
 

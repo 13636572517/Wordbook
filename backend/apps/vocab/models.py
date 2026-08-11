@@ -197,6 +197,7 @@ class UserSettings(models.Model):
     daily_quiz_goal = models.IntegerField(default=20, help_text="每日智能练习题数目标")
     daily_phrase_goal = models.IntegerField(default=10, help_text="每日词组学习与复习总数")
     show_daily_plan = models.BooleanField(default=True, help_text="是否显示每日学习计划")
+    target_finish_date = models.DateField(null=True, blank=True, help_text="目标完成词本日期")
 
     class Meta:
         db_table = "user_settings"
