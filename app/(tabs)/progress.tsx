@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import useColors from '@/components/useColors';
 import { repo, httpRepo, postStudyLogs } from '@/lib/data';
+import { fetchWordDetail } from '@/lib/data/httpRepo';
 import type { Word, WordDefinition, WordPhrase, WordExample, UserWordProgress } from '@/lib/data';
 import { startOfDayTs } from '@/lib/data/types';
 import { getWeakWordIds } from '@/lib/data/weak';
@@ -174,7 +175,8 @@ export default function ProgressScreen() {
     if (detailMap.has(w.id)) return;
     setLoadingDetail(w.id);
     try {
-      const full = await repo.getWord(w.id);
+      // 云端 getWord 只返回基础字段，需 fetchWordDetail 拿释义/词组/例句
+      const full = isCloud ? await fetchWordDetail(w.id) : await repo.getWord(w.id);
       if (full) {
         setDetailMap((prev) => new Map(prev).set(w.id, full));
         setWeakWords((prev) => prev.map((x) => (x.id === w.id ? { ...x, ...full } : x)));
@@ -183,10 +185,6 @@ export default function ProgressScreen() {
     setLoadingDetail(null);
   };
 
-  const startAction = (action?: 'review' | 'practice') => {
-    if (action === 'review') startReviewTraining();
-    if (action === 'practice') setTraining('quiz');
-  };
 
   // ===== 训练覆盖层：专项练习 =====
   if (training === 'quiz') {
@@ -399,19 +397,12 @@ export default function ProgressScreen() {
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>建议</Text>
           {advice.map((a, i) => (
-            <TouchableOpacity
-              key={i}
-              disabled={!a.action}
-              onPress={() => startAction(a.action)}
-              style={[styles.adviceItem, { backgroundColor: colors.background, opacity: a.action ? 1 : 1 }]}
-              activeOpacity={0.7}
-            >
+            <View key={i} style={[styles.adviceItem, { backgroundColor: colors.background }]}>
               <Text style={styles.adviceIcon}>
                 {a.kind === 'due' ? '⏰' : a.kind === 'weak' ? '🎯' : a.kind === 'plan' ? '📅' : a.kind === 'peak' ? '⚠️' : '✅'}
               </Text>
               <Text style={[styles.adviceText, { color: colors.text }]}>{a.text}</Text>
-              {a.action && <FontAwesome name="play" size={12} color={colors.tint} />}
-            </TouchableOpacity>
+            </View>
           ))}
         </View>
       </ScrollView>
