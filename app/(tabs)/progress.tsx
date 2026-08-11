@@ -339,9 +339,13 @@ export default function ProgressScreen() {
                         <Text style={[styles.weakTrans, { color: colors.subtitle }]} numberOfLines={1}>{w.translation}</Text>
                       </View>
                       <View style={styles.weakRight}>
-                        {p && p.wrong > 0 && (
+                        {p && p.wrong > 0 ? (
                           <Text style={styles.weakTag}>错 {p.wrong} 次{wrongPct >= 20 ? ` · ${wrongPct}%` : ''}</Text>
-                        )}
+                        ) : p && p.due <= Date.now() - 3 * DAY ? (
+                          <Text style={styles.weakTag}>逾期 {Math.floor((Date.now() - p.due) / DAY)} 天</Text>
+                        ) : p && p.repetitions <= 1 ? (
+                          <Text style={styles.weakTag}>未巩固</Text>
+                        ) : null}
                         <FontAwesome name={expandedId === w.id ? 'chevron-down' : 'chevron-right'} size={13} color={colors.subtitle} />
                       </View>
                     </TouchableOpacity>
