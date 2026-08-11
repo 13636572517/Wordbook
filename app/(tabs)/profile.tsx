@@ -218,57 +218,63 @@ export default function ProfileScreen() {
         <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>
           学习设置
         </Text>
-        <View style={[styles.goalCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.goalLabel, { color: colors.text }]}>
-            每日新词目标
-          </Text>
-          <TextInput
-            style={[
-              styles.goalInput,
-              {
-                backgroundColor: colors.inputBackground,
-                borderColor: colors.border,
-                color: colors.text,
-              },
-            ]}
-            value={goalInput}
-            onChangeText={handleGoalChange}
-            keyboardType="numeric"
-            placeholder="20"
-            placeholderTextColor={colors.subtitle}
-          />
-          <Text style={[styles.goalLabel, { color: colors.text }]}>每日词组总量</Text>
-          <TextInput
-            style={[
-              styles.goalInput,
-              {
-                backgroundColor: colors.inputBackground,
-                borderColor: colors.border,
-                color: colors.text,
-              },
-            ]}
-            value={phraseGoalInput}
-            onChangeText={handlePhraseGoalChange}
-            keyboardType="numeric"
-            placeholder="10"
-            placeholderTextColor={colors.subtitle}
-          />
-          <TouchableOpacity onPress={() => { const next = !showDailyPlan; setShowDailyPlan(next); if (user) setDailySettings(user.id, { showDailyPlan: next }); }} style={styles.planToggle}>
+        <View style={[styles.goalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.settingRow}>
+            <Text style={[styles.goalLabel, { color: colors.text }]}>每日新词目标</Text>
+            <TextInput
+              style={[
+                styles.goalInput,
+                {
+                  backgroundColor: colors.inputBackground,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
+              value={goalInput}
+              onChangeText={handleGoalChange}
+              keyboardType="numeric"
+              placeholder="20"
+              placeholderTextColor={colors.subtitle}
+            />
+          </View>
+          <View style={[styles.settingRow, styles.settingRowDivider]}>
+            <Text style={[styles.goalLabel, { color: colors.text }]}>每日词组总量</Text>
+            <TextInput
+              style={[
+                styles.goalInput,
+                {
+                  backgroundColor: colors.inputBackground,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
+              value={phraseGoalInput}
+              onChangeText={handlePhraseGoalChange}
+              keyboardType="numeric"
+              placeholder="10"
+              placeholderTextColor={colors.subtitle}
+            />
+          </View>
+          <TouchableOpacity
+            onPress={() => { const next = !showDailyPlan; setShowDailyPlan(next); if (user) setDailySettings(user.id, { showDailyPlan: next }); }}
+            style={[styles.settingRow, styles.settingRowDivider]}
+          >
             <Text style={[styles.goalLabel, { color: colors.text }]}>显示每日计划</Text>
-            <Text style={{ color: showDailyPlan ? colors.tint : colors.subtitle }}>{showDailyPlan ? '开启' : '关闭'}</Text>
+            <Text style={{ color: showDailyPlan ? colors.tint : colors.subtitle, fontSize: 15, fontWeight: '600' }}>
+              {showDailyPlan ? '开启' : '关闭'}
+            </Text>
           </TouchableOpacity>
-          <Text style={[styles.goalLabel, { color: colors.text }]}>目标完成日期</Text>
           <TouchableOpacity
             onPress={() => setDatePickerOpen(true)}
-            style={[
-              styles.goalInput,
-              { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.inputBackground, borderColor: colors.border },
-            ]}
+            style={[styles.settingRow, styles.settingRowDivider]}
           >
-            <Text style={{ color: targetDate ? colors.text : colors.subtitle, fontSize: 15 }}>
-              {targetDate ?? '未设置（点我选择）'}
-            </Text>
-            <FontAwesome name="calendar" size={15} color={colors.subtitle} />
+            <Text style={[styles.goalLabel, { color: colors.text }]}>目标完成日期</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ color: targetDate ? colors.text : colors.subtitle, fontSize: 15 }}>
+                {targetDate ?? '未设置'}
+              </Text>
+              <FontAwesome name="calendar" size={14} color={colors.subtitle} />
+            </View>
           </TouchableOpacity>
           <DateWheelPicker
             visible={datePickerOpen}
@@ -571,11 +577,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   goalCard: {
+    flexDirection: 'column',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
+  settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 14,
-    padding: 16,
+    paddingVertical: 14,
+  },
+  settingRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.25)',
   },
   goalLabel: {
     fontSize: 16,
@@ -594,7 +610,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 8,
   },
-  planToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
   accountRow: {
     flexDirection: 'row',
     alignItems: 'center',
