@@ -3,6 +3,7 @@ import useColors from '@/components/useColors';
 import { repo } from '@/lib/data';
 import { getWordbookStats } from '@/lib/data/stats';
 import { getDailySettings, setDailySettings } from '@/lib/data/settings';
+import DateWheelPicker from '@/components/DateWheelPicker';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
@@ -37,7 +38,8 @@ export default function ProfileScreen() {
   const [goalInput, setGoalInput] = useState('20');
   const [phraseGoalInput, setPhraseGoalInput] = useState('10');
   const [showDailyPlan, setShowDailyPlan] = useState(true);
-  const [targetDateInput, setTargetDateInput] = useState('');
+  const [targetDate, setTargetDate] = useState<string | null>(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -85,7 +87,7 @@ export default function ProfileScreen() {
         setGoalInput(String(settings.dailyNewWordGoal));
         setPhraseGoalInput(String(settings.dailyPhraseGoal));
         setShowDailyPlan(settings.showDailyPlan);
-        setTargetDateInput(settings.targetFinishDate ?? '');
+        setTargetDate(settings.targetFinishDate);
       })();
     }, [user]),
   );
@@ -108,20 +110,11 @@ export default function ProfileScreen() {
     }
   };
 
-  // 目标完成日期：失焦校验 yyyy-mm-dd，非法回退；空值=清除
-  const handleTargetDateBlur = async () => {
-    if (!user) return;
-    const v = targetDateInput.trim();
-    if (v === '') {
-      await setDailySettings(user.id, { targetFinishDate: null });
-      return;
-    }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-      await setDailySettings(user.id, { targetFinishDate: v });
-    } else {
-      const s = await getDailySettings(user.id);
-      setTargetDateInput(s.targetFinishDate ?? '');
-    }
+  // 目标完成日期：滚轮选择器确认后保存（null=清除）
+  const saveTargetDate = async (v: string | null) => {
+    setTargetDate(v);
+    setDatePickerOpen(false);
+    if (user) await setDailySettings(user.id, { targetFinishDate: v });
   };
 
   const handleSwitch = (id: string) => {
@@ -265,24 +258,24 @@ export default function ProfileScreen() {
             <Text style={{ color: showDailyPlan ? colors.tint : colors.subtitle }}>{showDailyPlan ? '开启' : '关闭'}</Text>
           </TouchableOpacity>
           <Text style={[styles.goalLabel, { color: colors.text }]}>目标完成日期</Text>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <TextInput
-              style={[
-                styles.goalInput,
-                { flex: 1, backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text },
-              ]}
-              value={targetDateInput}
-              onChangeText={setTargetDateInput}
-              onEndEditing={handleTargetDateBlur}
-              placeholder="如 2026-09-30"
-              placeholderTextColor={colors.subtitle}
-            />
-            {targetDateInput !== '' && (
-              <TouchableOpacity onPress={() => { setTargetDateInput(''); if (user) setDailySettings(user.id, { targetFinishDate: null }); }}>
-                <Text style={{ color: colors.subtitle, fontSize: 13 }}>清除</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <TouchableOpacity
+            onPress={() => setDatePickerOpen(true)}
+            style={[
+              styles.goalInput,
+              { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.inputBackground, borderColor: colors.border },
+            ]}
+          >
+            <Text style={{ color: targetDate ? colors.text : colors.subtitle, fontSize: 15 }}>
+              {targetDate ?? '未设置（点我选择）'}
+            </Text>
+            <FontAwesome name="calendar" size={15} color={colors.subtitle} />
+          </TouchableOpacity>
+          <DateWheelPicker
+            visible={datePickerOpen}
+            value={targetDate}
+            onConfirm={saveTargetDate}
+            onClose={() => setDatePickerOpen(false)}
+          />
         </View>
         <Text style={[styles.goalNote, { color: colors.subtitle }]}>
           全局生效，所有词本共用
