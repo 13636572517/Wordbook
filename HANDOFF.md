@@ -36,6 +36,7 @@
 
 ### 最近提交（main，新→旧）
 ```
+20a6b29 fix: 薄弱词展开改用 fetchWordDetail 取完整释义；建议条目去除点击行为
 e06d926 feat: Tab 薄弱词→进度；设置页新增目标完成日期
 0895a67 feat: 进度页（总体进度/需加强词/建议 三卡片 + 页内专项复习与练习）
 c657699 feat: DailySettings 增加 targetFinishDate 目标完成日期
@@ -694,3 +695,12 @@ sshpass -p '<PW>' rsync -avz --delete --exclude='.expo' --exclude='words/similar
 
 **涉及文件**：progress.tsx（新）、_layout.tsx（Tab 名）、profile.tsx、settings.ts、httpRepo.ts、
 todayCounts.ts、progressAdvice.ts、backend models/serializers/views + migration
+
+## 27. 修复（2026-08-11）：进度页两处体验问题（`20a6b29`，已部署）
+
+1. **薄弱词展开为空**：云端 `repo.getWord()` 只返回基础字段（无释义/词组/例句），
+   展开详情时改用 `fetchWordDetail()`（`app/(tabs)/progress.tsx` 的 handleWordPress）。
+2. **建议条目误带点击行为**：原设计建议条目可点击直达训练，用户反馈不需要，
+   已改为纯文本展示（移除 onPress / play 图标）。
+
+> 待定：薄弱词判定逻辑（"历史上掌握不牢靠"的口径）正在与用户讨论，尚未修改。
