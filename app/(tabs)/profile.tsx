@@ -37,6 +37,7 @@ export default function ProfileScreen() {
   const [goalInput, setGoalInput] = useState('20');
   const [phraseGoalInput, setPhraseGoalInput] = useState('10');
   const [showDailyPlan, setShowDailyPlan] = useState(true);
+  const [targetDateInput, setTargetDateInput] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -84,6 +85,7 @@ export default function ProfileScreen() {
         setGoalInput(String(settings.dailyNewWordGoal));
         setPhraseGoalInput(String(settings.dailyPhraseGoal));
         setShowDailyPlan(settings.showDailyPlan);
+        setTargetDateInput(settings.targetFinishDate ?? '');
       })();
     }, [user]),
   );
@@ -103,6 +105,22 @@ export default function ProfileScreen() {
     const n = parseInt(text, 10);
     if (Number.isFinite(n) && n > 0) {
       await setDailySettings(user.id, { dailyPhraseGoal: n });
+    }
+  };
+
+  // 目标完成日期：失焦校验 yyyy-mm-dd，非法回退；空值=清除
+  const handleTargetDateBlur = async () => {
+    if (!user) return;
+    const v = targetDateInput.trim();
+    if (v === '') {
+      await setDailySettings(user.id, { targetFinishDate: null });
+      return;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      await setDailySettings(user.id, { targetFinishDate: v });
+    } else {
+      const s = await getDailySettings(user.id);
+      setTargetDateInput(s.targetFinishDate ?? '');
     }
   };
 
@@ -246,6 +264,25 @@ export default function ProfileScreen() {
             <Text style={[styles.goalLabel, { color: colors.text }]}>显示每日计划</Text>
             <Text style={{ color: showDailyPlan ? colors.tint : colors.subtitle }}>{showDailyPlan ? '开启' : '关闭'}</Text>
           </TouchableOpacity>
+          <Text style={[styles.goalLabel, { color: colors.text }]}>目标完成日期</Text>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <TextInput
+              style={[
+                styles.goalInput,
+                { flex: 1, backgroundColor: colors.inputBackground, borderColor: colors.border, color: colors.text },
+              ]}
+              value={targetDateInput}
+              onChangeText={setTargetDateInput}
+              onEndEditing={handleTargetDateBlur}
+              placeholder="如 2026-09-30"
+              placeholderTextColor={colors.subtitle}
+            />
+            {targetDateInput !== '' && (
+              <TouchableOpacity onPress={() => { setTargetDateInput(''); if (user) setDailySettings(user.id, { targetFinishDate: null }); }}>
+                <Text style={{ color: colors.subtitle, fontSize: 13 }}>清除</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
         <Text style={[styles.goalNote, { color: colors.subtitle }]}>
           全局生效，所有词本共用

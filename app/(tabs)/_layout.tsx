@@ -59,9 +59,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="weak"
+        name="progress"
         options={{
-          title: '薄弱词',
+          title: '进度',
           tabBarIcon: ({ color }) => <TabBarIcon name="exclamation-circle" color={color} />,
         }}
       />
