@@ -1343,7 +1343,7 @@ class TeacherStudentProgressView(APIView):
         for i in range(29, -1, -1):
             d = (today_date - timedelta(days=i)).strftime("%Y-%m-%d")
             cnt, new_cnt = agg.get(d, (0, 0))
-            checkin.append({"date": d, "count": cnt, "new_count": new_cnt})
+            checkin.append({"date": d, "count": int(cnt), "new_count": int(new_cnt)})
 
         # --- 已学词进度列表（字母序，A-Z 分组用）---
         prog_qs = qs.select_related("word").order_by("word__word")
