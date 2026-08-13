@@ -1140,6 +1140,25 @@ class TeacherStudentListView(APIView):
                 )
                 recent_days = dict(cursor.fetchall())
 
+        # 每用户最后学习的词本（进度页缺省选中用）
+        last_wb: dict = {}
+        if user_ids:
+            ph = ",".join(["%s"] * len(user_ids))
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT sl.user_id, sl.wordbook_id
+                    FROM study_logs sl
+                    JOIN (
+                        SELECT user_id, MAX(ts) AS mts
+                        FROM study_logs WHERE user_id IN ({ph})
+                        GROUP BY user_id
+                    ) t ON t.user_id = sl.user_id AND t.mts = sl.ts
+                    """,
+                    user_ids,
+                )
+                last_wb = dict(cursor.fetchall())
+
         result = []
         for row in rows:
             uid = row[0]
@@ -1154,6 +1173,7 @@ class TeacherStudentListView(APIView):
                 "studied_days": row[5],
                 "recent_days": recent_days.get(uid, 0),
                 "last_active": row[6],
+                "last_wordbook_id": last_wb.get(uid),
             })
 
         return Response(result)

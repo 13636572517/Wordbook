@@ -79,12 +79,20 @@ export function CheckinCard({ summary, colors }: { summary: StudentProgressSumma
   const [selected, setSelected] = useState<string | null>(null);
   const { width } = useWindowDimensions();
 
-  // 自适应格子：容器宽度受限，格子边长锁在 16~24px，列数随之变化
+  // 自适应格子：PC 宽屏 30 格排一行；窄屏按 16~24px 格子自动换行
   const GAP = 4;
-  const containerW = Math.min(Math.max(width - 78, 200), 640);
-  let cols = Math.floor(containerW / (24 + GAP));
-  cols = Math.max(6, Math.min(cols, 30));
-  const cell = Math.min(24, Math.max(16, Math.floor((containerW - (cols - 1) * GAP) / cols)));
+  const N = summary.checkin.length;
+  const containerW = Math.min(Math.max(width - 78, 200), 900);
+  let cols: number;
+  let cell: number;
+  const singleRowCell = Math.floor((containerW - (N - 1) * GAP) / N);
+  if (singleRowCell >= 13) {
+    cols = N; // 单行
+    cell = Math.min(24, singleRowCell);
+  } else {
+    cols = Math.max(6, Math.floor(containerW / (20 + GAP)));
+    cell = Math.min(24, Math.max(16, Math.floor((containerW - (cols - 1) * GAP) / cols)));
+  }
 
   const sel = summary.checkin.find((c) => c.date === selected);
   return (
@@ -178,7 +186,7 @@ export function AZList({
       <Text style={[pStyles.cardTitle, { color: colors.text, marginBottom: 10 }]}>A-Z 进展</Text>
       {!hasWordbook && (
         <Text style={[pStyles.tinyMeta, { color: colors.subtitle, marginBottom: 8 }]}>
-          当前为全部词本汇总，选择具体词本可查看完整 A-Z 单词列表
+          当前为全部词本汇总（无完成度口径），选择具体词本可查看进度条与完整单词列表
         </Text>
       )}
       {letters.map((letter) => {
@@ -197,13 +205,17 @@ export function AZList({
                   {letter} · 已学 {g.learned}{hasWordbook ? `/${g.total}` : ''}
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={[pStyles.tinyMeta, { color: colors.tint, fontWeight: '700' }]}>{groupPct}%</Text>
+                  {hasWordbook && (
+                    <Text style={[pStyles.tinyMeta, { color: colors.tint, fontWeight: '700' }]}>{groupPct}%</Text>
+                  )}
                   <FontAwesome name={isOpen ? 'chevron-down' : 'chevron-right'} size={13} color={colors.subtitle} />
                 </View>
               </View>
-              <View style={[pStyles.barBg, { marginTop: 8 }]}>
-                <View style={[pStyles.barFill, { width: `${groupPct}%`, backgroundColor: colors.tint }]} />
-              </View>
+              {hasWordbook && (
+                <View style={[pStyles.barBg, { marginTop: 8 }]}>
+                  <View style={[pStyles.barFill, { width: `${groupPct}%`, backgroundColor: colors.tint }]} />
+                </View>
+              )}
             </TouchableOpacity>
             {isOpen && (
               <View style={[pStyles.azBody, { backgroundColor: colors.card, borderColor: colors.border }]}>

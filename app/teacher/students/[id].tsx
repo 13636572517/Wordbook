@@ -74,7 +74,12 @@ export default function TeacherStudentDetailScreen() {
         ]);
         const s = students.find((x: StudentInfo) => x.user_id === userId);
         setStudent(s || null);
-        setWordbooks(wbs.filter((w: Wordbook) => w.type === 'system'));
+        const sysWbs = wbs.filter((w: Wordbook) => w.type === 'system');
+        setWordbooks(sysWbs);
+        // 缺省选中该学员最后学习的词本（而非「全部词本」）
+        if (s?.last_wordbook_id != null && sysWbs.some((w) => parseInt(w.id) === s.last_wordbook_id)) {
+          setSelectedWb(s.last_wordbook_id);
+        }
       } catch {
         // ignore
       } finally {

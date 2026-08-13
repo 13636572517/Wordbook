@@ -765,6 +765,8 @@ export interface StudentInfo {
   studied_days: number;
   recent_days: number;
   last_active: number;
+  /** 该学员最后学习的词本 id（进度页缺省选中） */
+  last_wordbook_id: number | null;
 }
 
 export interface DailyProgress {
