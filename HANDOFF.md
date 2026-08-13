@@ -36,6 +36,7 @@
 
 ### 最近提交（main，新→旧）
 ```
+75e7969 feat: 统一学员统计视图——概览/打卡/AZ合并，打卡自适应，学员统计页复用教师端同款UI
 04b1bc1 feat: 教师端学员详情升级为5Tab（概览/打卡/薄弱词/A-Z/错题）
 9ab4d32 fix(backend): 打卡 new_count 转整数
 6503c01 feat: 薄弱词新增逾期未复习与低强度陈旧词两个判定维度+原因标签
@@ -777,3 +778,25 @@ todayCounts.ts、progressAdvice.ts、backend models/serializers/views + migratio
     （红=薄弱 绿=已掌握 黄=学习中 灰=未学）；「全部词本」模式仅列已学词
   - **错题**：保留原逻辑
 - 数据按词本 key 缓存，Tab/词本切换按需拉取
+
+## 32. 功能（2026-08-13）：统一学员统计视图（`75e7969`，已部署）
+
+**需求**：① 教师端概览/打卡/A-Z 合并为一个「概览」Tab；② A-Z 每字母组带进度条；
+③ 打卡格子做手机/PC 自适应（原百分比格子过大）；④ 学员端「统计」页用同款视图替代。
+
+**架构**（共享化重构）：
+- `lib/data/studentProgress.ts`（新）：`StudentProgressSummary` / `WeakWordEntry` 类型统一定义处；
+  前端组装器 `buildStudentProgressSummary` / `buildWeakWordEntries` / `buildAZWords`
+  （走 repo 抽象，云端/本地通用，与后端 progress 接口同构）
+- `lib/data/weak.ts`：抽出 `getWeakReason`（4 维原因判定 wrong>recent>overdue>stale）
+  + `scanWeakLogs`，`getWeakWordIds` 改为复用，学员/教师/后端口径同源
+- `components/StudentProgressParts.tsx`（新）：共享 UI——OverviewCard、CheckinCard、
+  AZList、WeakList、StudentProgressOverview（前三者合并视图）
+- `lib/data/httpRepo.ts`：类型收拢，TeacherWeakWord = WeakWordEntry 别名
+
+**页面变化**：
+- 教师端学员详情（[id].tsx）：5 Tab → 3 Tab（概览/薄弱词/错题）；概览 = 完成度卡 + 打卡 + A-Z
+- 学员端统计页（stats.tsx）：替换为 streak 卡 + 统一进度视图 + 薄弱词列表；
+  streak 从打卡数据推导（今天未学不打断连击）
+- 打卡格子：`useWindowDimensions` 自适应，边长锁定 16~24px，列数随宽度变化（容器上限 640px）
+- A-Z：每字母组头显示「已学 x/y + 百分比 + 进度条」，展开逐词状态色点
