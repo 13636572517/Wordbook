@@ -36,6 +36,8 @@
 
 ### 最近提交（main，新→旧）
 ```
+04b1bc1 feat: 教师端学员详情升级为5Tab（概览/打卡/薄弱词/A-Z/错题）
+9ab4d32 fix(backend): 打卡 new_count 转整数
 6503c01 feat: 薄弱词新增逾期未复习与低强度陈旧词两个判定维度+原因标签
 88e52f7 fix: 学习设置改为纵向分行布局，适配手机窄屏
 59e4c52 feat: 目标完成日期改用年/月/日滚轮选择器
@@ -749,3 +751,29 @@ todayCounts.ts、progressAdvice.ts、backend models/serializers/views + migratio
 - 新增导出 `isOverdueWeak` / `isStaleWeak` 纯函数，单测 5 用例覆盖（weak.test.ts）
 - 进度页薄弱词标签按优先级显示原因：「错 N 次 · X%」→「逾期 N 天」→「未巩固」
 - 练习页智能范围的薄弱词口径自动同步（共用 getWeakWordIds）
+
+## 31. 功能（2026-08-13）：教师端学员详情升级——参考「进度」页的 5 Tab（`04b1bc1`，已部署）
+
+**需求**：管理员点开学员后能看到该学员的学习进度、词本完成情况、近 30 天打卡、
+薄弱词（新 4 维口径）、按 A-Z 首字母分组的进展。设计规格
+`docs/superpowers/specs/2026-08-13-teacher-student-progress-design.md`（superpowers brainstorming 产出）。
+
+**后端**（`backend/apps/vocab/views.py` + `urls.py`）：
+- 新增 `GET /teacher/students/<id>/progress/?wordbook_id=`：
+  - wordbook: total/learned/mastered(reps≥3)/learning/due（mastered 优先于 due，与学员端一致）
+  - today: 当日新词与复习去重词数
+  - checkin: 近 30 天逐日 {date,count,new_count}（空日补 0）
+  - progress: 已学词进度列表按字母序（A-Z 分组用）
+- `weak-words` 升级为学员端同款 4 维口径（wrong/recent/overdue/stale），响应加 reason 字段；
+  近期错误统计补上 source=review
+
+**前端**：
+- `lib/data/httpRepo.ts`：fetchStudentProgress + StudentProgressSummary 类型；TeacherWeakWord 加 reason
+- `app/teacher/students/[id].tsx` 重构为 5 Tab（替换原 daily Tab）：
+  - **概览**（默认）：词本完成度进度条 + 已掌握/学习中/待复习 + 今日新词/复习
+  - **打卡**：30 天格子日历（6列网格，按学习量 4 档着色），点格显示当日明细
+  - **薄弱词**：原因标签（错N次·X% / 近期错N次 / 逾期N天 / 未巩固）
+  - **A-Z**：按首字母分组折叠，组头「A · 12/89」+ 迷你进度条；展开逐词状态色点
+    （红=薄弱 绿=已掌握 黄=学习中 灰=未学）；「全部词本」模式仅列已学词
+  - **错题**：保留原逻辑
+- 数据按词本 key 缓存，Tab/词本切换按需拉取
