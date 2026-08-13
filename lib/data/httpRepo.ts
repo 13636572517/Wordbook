@@ -792,6 +792,24 @@ export interface TeacherWeakWord {
   repetitions: number;
   interval: number;
   due: number;
+  /** 薄弱原因：wrong=错误率高 recent=近期屡错 overdue=逾期未复习 stale=低强度陈旧 */
+  reason?: 'wrong' | 'recent' | 'overdue' | 'stale';
+}
+
+export interface StudentProgressSummary {
+  wordbook: { total: number; learned: number; mastered: number; learning: number; due: number };
+  today: { new_words: number; review_words: number };
+  checkin: { date: string; count: number; new_count: number }[];
+  progress: {
+    word_id: number;
+    word: string;
+    translation: string;
+    repetitions: number;
+    due: number;
+    ef: number;
+    correct: number;
+    wrong: number;
+  }[];
 }
 
 export interface TeacherWrongLog {
@@ -819,6 +837,14 @@ export async function fetchStudentDaily(
 export async function fetchStudentDailyDetail(userId: number, date: string, wordbookId?: number): Promise<StudentDailyDetail> {
   const params = wordbookId ? `?wordbook_id=${wordbookId}` : '';
   return api<StudentDailyDetail>(`/teacher/students/${userId}/daily/${date}/detail/${params}`);
+}
+
+export async function fetchStudentProgress(
+  userId: number,
+  wordbookId?: number,
+): Promise<StudentProgressSummary> {
+  const params = wordbookId ? `?wordbook_id=${wordbookId}` : '';
+  return api<StudentProgressSummary>(`/teacher/students/${userId}/progress/${params}`);
 }
 
 export async function fetchStudentWeakWords(
