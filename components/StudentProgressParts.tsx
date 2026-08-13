@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import useColors from './useColors';
-import type { StudentProgressSummary, WeakWordEntry } from '@/lib/data/studentProgress';
+import type { StudentProgressSummary, WeakWordEntry, WrongLogEntry } from '@/lib/data/studentProgress';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -260,6 +260,34 @@ export function WeakList({ words, colors }: { words: WeakWordEntry[]; colors: Re
           <Text style={[pStyles.subtitle, { color: colors.pinyin }]} numberOfLines={1}>{w.translation}</Text>
           <Text style={[pStyles.tinyMeta, { color: colors.subtitle, marginTop: 6 }]}>
             EF {w.ef.toFixed(1)} · 对{w.correct}/错{w.wrong} · 复习{w.repetitions}轮
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/* ── 错题列表：教师端错题 Tab / 学员统计页共用 ─────────────────────── */
+
+export function WrongList({ logs, colors }: { logs: WrongLogEntry[]; colors: ReturnType<typeof useColors> }) {
+  if (logs.length === 0) {
+    return (
+      <View style={{ alignItems: 'center', marginTop: 40 }}>
+        <Text style={[pStyles.meta, { color: colors.subtitle }]}>🎉 没有错题记录</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ gap: 10 }}>
+      {logs.map((w) => (
+        <View key={w.word_id} style={[pStyles.card, { backgroundColor: colors.card }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={[pStyles.cardTitle, { color: colors.text }]}>{w.word}</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#E5484D' }}>×{w.wrong_count}</Text>
+          </View>
+          <Text style={[pStyles.subtitle, { color: colors.pinyin }]}>{w.translation}</Text>
+          <Text style={[pStyles.tinyMeta, { color: colors.subtitle, marginTop: 6 }]}>
+            最近错误: {new Date(w.last_wrong_ts).toLocaleDateString()} · {w.sources || '练习'}
           </Text>
         </View>
       ))}

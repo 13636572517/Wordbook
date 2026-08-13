@@ -23,7 +23,7 @@ import {
   type TeacherWrongLog,
 } from '@/lib/data/httpRepo';
 import { repo, type Wordbook } from '@/lib/data';
-import { StudentProgressOverview, WeakList } from '@/components/StudentProgressParts';
+import { StudentProgressOverview, WeakList, WrongList } from '@/components/StudentProgressParts';
 
 const USE_CLOUD = process.env.EXPO_PUBLIC_USE_CLOUD === 'true';
 
@@ -223,7 +223,12 @@ export default function TeacherStudentDetailScreen() {
           <WeakList words={weakWords} colors={colors} />
         </ScrollView>
       ) : (
-        <WrongSection logs={wrongLogs} total={wrongTotal} colors={colors} />
+        <ScrollView contentContainerStyle={{ gap: 10, paddingBottom: 40 }}>
+          <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.summaryTitle, { color: colors.text }]}>错题 {wrongTotal} 条</Text>
+          </View>
+          <WrongList logs={wrongLogs} colors={colors} />
+        </ScrollView>
       )}
     </View>
   );
@@ -237,43 +242,6 @@ function MiniStat({ label, value, color }: { label: string; value: number; color
       <Text style={[sectionStyles.miniNum, { color }]}>{value}</Text>
       <Text style={sectionStyles.miniLabel}>{label}</Text>
     </View>
-  );
-}
-
-function WrongSection({
-  logs,
-  total,
-  colors,
-}: {
-  logs: TeacherWrongLog[];
-  total: number;
-  colors: ReturnType<typeof useColors>;
-}) {
-  if (logs.length === 0) {
-    return (
-      <View style={sectionStyles.emptyWrap}>
-        <Text style={[sectionStyles.emptyText, { color: colors.subtitle }]}>🎉 没有错题记录</Text>
-      </View>
-    );
-  }
-  return (
-    <ScrollView contentContainerStyle={sectionStyles.list}>
-      <View style={[sectionStyles.summaryCard, { backgroundColor: colors.card }]}>
-        <Text style={[sectionStyles.summaryTitle, { color: colors.text }]}>错题 {total} 条</Text>
-      </View>
-      {logs.map((w) => (
-        <View key={w.word_id} style={[sectionStyles.card, { backgroundColor: colors.card }]}>
-          <View style={sectionStyles.row}>
-            <Text style={[sectionStyles.cardTitle, { color: colors.text }]}>{w.word}</Text>
-            <Text style={[sectionStyles.rate, { color: '#E5484D' }]}>×{w.wrong_count}</Text>
-          </View>
-          <Text style={[sectionStyles.subtitle, { color: colors.pinyin }]}>{w.translation}</Text>
-          <Text style={[sectionStyles.meta, { color: colors.subtitle }]}>
-            最近错误: {new Date(w.last_wrong_ts).toLocaleDateString()} · {w.sources || '练习'}
-          </Text>
-        </View>
-      ))}
-    </ScrollView>
   );
 }
 

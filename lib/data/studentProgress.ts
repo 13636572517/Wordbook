@@ -169,6 +169,63 @@ export async function buildWeakWordEntries(
   return result;
 }
 
+/** 错题记录条目（与教师端 TeacherWrongLog 同构） */
+export interface WrongLogEntry {
+  word_id: number;
+  word: string;
+  translation: string;
+  wrong_count: number;
+  last_wrong_ts: number;
+  sources: string;
+}
+
+/**
+ * 前端组装错题清单（口径与后端 TeacherStudentWrongLogsView 一致）：
+ * study_logs 中 grade<3（Again/Hard）的记录，按单词聚合错误次数与最近错误时间，
+ * 按错误次数倒序。
+ */
+export async function buildWrongLogEntries(
+  repo: Repository,
+  userId: string,
+  wordbookId: string,
+  now = Date.now(),
+): Promise<WrongLogEntry[]> {
+  const [words, logs] = await Promise.all([
+    repo.getWordsByWordbook(wordbookId),
+    repo.listStudyLogs(userId, wordbookId, {}),
+  ]);
+  const wordById = new Map(words.map((w) => [w.id, w]));
+
+  const agg = new Map<string, { count: number; lastTs: number; sources: Set<string> }>();
+  for (const l of logs) {
+    if (l.ts > now || l.grade >= 3) continue;
+    let e = agg.get(l.wordId);
+    if (!e) {
+      e = { count: 0, lastTs: 0, sources: new Set() };
+      agg.set(l.wordId, e);
+    }
+    e.count += 1;
+    if (l.ts > e.lastTs) e.lastTs = l.ts;
+    if (l.source) e.sources.add(l.source);
+  }
+
+  const result: WrongLogEntry[] = [];
+  for (const [wordId, e] of agg) {
+    const w = wordById.get(wordId);
+    if (!w) continue;
+    result.push({
+      word_id: toNumId(wordId),
+      word: w.word,
+      translation: w.translation ?? '',
+      wrong_count: e.count,
+      last_wrong_ts: e.lastTs,
+      sources: [...e.sources].sort().join(','),
+    });
+  }
+  result.sort((a, b) => b.wrong_count - a.wrong_count || b.last_wrong_ts - a.last_wrong_ts);
+  return result;
+}
+
 /** A-Z 全量词表（含未学词）：只取 id + word */
 export async function buildAZWords(repo: Repository, wordbookId: string): Promise<{ id: string; word: string }[]> {
   const words: Word[] = await repo.getWordsByWordbook(wordbookId);

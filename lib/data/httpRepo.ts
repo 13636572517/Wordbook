@@ -789,14 +789,9 @@ export type { StudentProgressSummary } from './studentProgress';
 /** 教师端薄弱词条目（含 reason 原因标签） */
 export type TeacherWeakWord = WeakWordEntry;
 
-export interface TeacherWrongLog {
-  word_id: number;
-  word: string;
-  translation: string;
-  wrong_count: number;
-  last_wrong_ts: number;
-  sources: string;
-}
+import type { WrongLogEntry } from './studentProgress';
+/** 错题记录条目（学员端前端组装器同构） */
+export type TeacherWrongLog = WrongLogEntry;
 
 export async function fetchStudents(q?: string): Promise<StudentInfo[]> {
   const params = q ? `?q=${encodeURIComponent(q)}` : '';
