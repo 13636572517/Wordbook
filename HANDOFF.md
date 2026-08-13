@@ -36,6 +36,7 @@
 
 ### 最近提交（main，新→旧）
 ```
+c0bb2f1 feat: 学员统计页升级为概览/薄弱词/错题三Tab，错题口径与教师端同源
 f24bcec fix: 打卡PC单行布局；学员详情缺省选中最后学习词本；修复全部词本A-Z假100%
 75e7969 feat: 统一学员统计视图——概览/打卡/AZ合并，打卡自适应，学员统计页复用教师端同款UI
 04b1bc1 feat: 教师端学员详情升级为5Tab（概览/打卡/薄弱词/A-Z/错题）
@@ -812,3 +813,22 @@ todayCounts.ts、progressAdvice.ts、backend models/serializers/views + migratio
 3. **「全部词本」A-Z 假 100%**：原实现在汇总模式下把已学词同时计入 total 与 learned，
    导致所有字母恒 100%。修正：汇总模式无完成度口径，组头只显示「已学 N」，
    不渲染百分比与进度条；选具体词本才有 x/y + 进度条。
+
+## 34. 功能（2026-08-14）：学员统计页补齐错题，三 Tab 对齐教师端（`c0bb2f1`，已部署）
+
+**需求**：学员端统计模块缺少错题，应与教师端一样提供 概览/薄弱词/错题 三个 Tab。
+
+**实现**：
+- `lib/data/studentProgress.ts` 新增 `buildWrongLogEntries`：前端组装错题清单，
+  口径与后端 `TeacherStudentWrongLogsView` 完全一致（grade<3 即 Again/Hard 记错，
+  按单词聚合错误次数/最近错误时间/来源，错误次数倒序）
+- `components/StudentProgressParts.tsx` 新增共享 `WrongList` 组件；
+  教师端 `[id].tsx` 错题 Tab 改用共享组件（删除本地 WrongSection，消除双实现）
+- `app/(tabs)/stats.tsx` 重构为三 Tab：
+  - **概览**：连续学习 streak 卡 + 统一进度视图（完成度/打卡/A-Z）
+  - **薄弱词**：4 维口径汇总卡 + WeakList
+  - **错题**：错题汇总卡 + WrongList
+- `lib/data/httpRepo.ts`：TeacherWrongLog 收拢为 WrongLogEntry 别名
+
+**数据流**：学员端无教师接口权限，全部经 repo 抽象前端组装（云端/本地通用），
+与教师端后端接口同构，保证两端看到的错题/薄弱词数据一致。
