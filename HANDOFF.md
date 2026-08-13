@@ -36,6 +36,7 @@
 
 ### 最近提交（main，新→旧）
 ```
+f24bcec fix: 打卡PC单行布局；学员详情缺省选中最后学习词本；修复全部词本A-Z假100%
 75e7969 feat: 统一学员统计视图——概览/打卡/AZ合并，打卡自适应，学员统计页复用教师端同款UI
 04b1bc1 feat: 教师端学员详情升级为5Tab（概览/打卡/薄弱词/A-Z/错题）
 9ab4d32 fix(backend): 打卡 new_count 转整数
@@ -800,3 +801,14 @@ todayCounts.ts、progressAdvice.ts、backend models/serializers/views + migratio
   streak 从打卡数据推导（今天未学不打断连击）
 - 打卡格子：`useWindowDimensions` 自适应，边长锁定 16~24px，列数随宽度变化（容器上限 640px）
 - A-Z：每字母组头显示「已学 x/y + 百分比 + 进度条」，展开逐词状态色点
+
+## 33. 修复（2026-08-13）：进度页三处体验修正（`f24bcec`，已部署）
+
+1. **打卡 PC 单行**：`CheckinCard` 容器宽度上限提至 900px，若 30 格能以 ≥13px 排下
+   则单行显示（PC 常见为 24px×30 一行）；窄屏仍按 16~24px 格子自动换行。
+2. **学员详情缺省词本**：后端 `TeacherStudentListView` 新增 `last_wordbook_id`
+   （每用户最近一条 study_log 的词本，批量子查询）；前端详情页加载后缺省选中该词本
+   （需在系统词本列表中），不再默认「全部词本」。
+3. **「全部词本」A-Z 假 100%**：原实现在汇总模式下把已学词同时计入 total 与 learned，
+   导致所有字母恒 100%。修正：汇总模式无完成度口径，组头只显示「已学 N」，
+   不渲染百分比与进度条；选具体词本才有 x/y + 进度条。
