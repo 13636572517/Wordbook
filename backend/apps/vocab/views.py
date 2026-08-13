@@ -11,7 +11,7 @@ import urllib.request
 from datetime import datetime, timedelta
 
 from django.db import IntegrityError, connection, transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Min, Q, Sum
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -1274,11 +1274,118 @@ class TeacherStudentDailyDetailView(APIView):
         })
 
 
+class TeacherStudentProgressView(APIView):
+    """学员学习进度聚合视图（仅教师/管理员）。
+
+    GET /teacher/students/<user_id>/progress/?wordbook_id=
+    返回：词本概览、今日统计、近30天打卡、已学词进度列表（字母序）。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id: int):
+        if not is_teacher_or_admin(request.user.id):
+            return Response({"error": "仅教师/管理员可查看"}, status=403)
+
+        wb_id = request.query_params.get("wordbook_id")
+        now_ms = int(time.time() * 1000)
+        day_ms = 86400000
+        today_start = int(
+            timezone.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000
+        )
+
+        # --- 词本概览（mastered 优先于 due，与学员端 getWordbookStats 一致）---
+        total_qs = WordbookWord.objects.all()
+        if wb_id:
+            total_qs = total_qs.filter(wordbook_id=int(wb_id))
+        total = total_qs.count()
+
+        qs = UserWordProgress.objects.filter(user_id=user_id)
+        if wb_id:
+            qs = qs.filter(wordbook_id=int(wb_id))
+        learned = qs.count()
+        mastered = qs.filter(repetitions__gte=3).count()
+        due = qs.filter(repetitions__lt=3, due__lte=now_ms).count()
+        learning = learned - mastered - due
+
+        # --- 今日统计（去重词数）---
+        today_qs = StudyLog.objects.filter(user_id=user_id, ts__gte=today_start, ts__lte=now_ms)
+        if wb_id:
+            today_qs = today_qs.filter(wordbook_id=int(wb_id))
+        new_words = today_qs.filter(is_new=True).values("word_id").distinct().count()
+        review_words = today_qs.filter(source="review").values("word_id").distinct().count()
+
+        # --- 近30天打卡（空日补0）---
+        from_ts = now_ms - 30 * day_ms
+        log_qs = StudyLog.objects.filter(user_id=user_id, ts__gte=from_ts, ts__lte=now_ms)
+        if wb_id:
+            log_qs = log_qs.filter(wordbook_id=int(wb_id))
+        with connection.cursor() as cursor:
+            where = "WHERE sl.user_id = %s AND sl.ts >= %s AND sl.ts <= %s"
+            params: list = [user_id, from_ts, now_ms]
+            if wb_id:
+                where += " AND sl.wordbook_id = %s"
+                params.append(int(wb_id))
+            cursor.execute(
+                f"""
+                SELECT DATE_FORMAT(FROM_UNIXTIME(sl.ts / 1000), '%%Y-%%m-%%d') AS d,
+                       COUNT(*) AS cnt,
+                       SUM(CASE WHEN sl.is_new THEN 1 ELSE 0 END) AS new_cnt
+                FROM study_logs sl
+                {where}
+                GROUP BY d
+                """,
+                params,
+            )
+            agg = {row[0]: (row[1], row[2] or 0) for row in cursor.fetchall()}
+        checkin = []
+        today_date = timezone.now().date()
+        for i in range(29, -1, -1):
+            d = (today_date - timedelta(days=i)).strftime("%Y-%m-%d")
+            cnt, new_cnt = agg.get(d, (0, 0))
+            checkin.append({"date": d, "count": cnt, "new_count": new_cnt})
+
+        # --- 已学词进度列表（字母序，A-Z 分组用）---
+        prog_qs = qs.select_related("word").order_by("word__word")
+        progress = [
+            {
+                "word_id": p.word_id,
+                "word": p.word.word,
+                "translation": p.word.translation,
+                "repetitions": p.repetitions,
+                "due": p.due,
+                "ef": round(p.ef, 2),
+                "correct": p.correct,
+                "wrong": p.wrong,
+            }
+            for p in prog_qs
+        ]
+
+        return Response(
+            {
+                "wordbook": {
+                    "total": total,
+                    "learned": learned,
+                    "mastered": mastered,
+                    "learning": learning,
+                    "due": due,
+                },
+                "today": {"new_words": new_words, "review_words": review_words},
+                "checkin": checkin,
+                "progress": progress,
+            }
+        )
+
+
 class TeacherStudentWeakWordsView(APIView):
     """学员未掌握单词清单（仅教师/管理员）。
 
-    判定：错率≥0.34 或 EF<1.8，且未达到「已掌握」门槛
-    （repetitions≥2 且 EF≥2.5 且 interval≥21）。
+    判定（与学员端 lib/data/weak.ts 四口径一致）：
+    1. 错率≥0.34 或 EF<1.8（reason=wrong）
+    2. 近30天练习/复习错≥2次（reason=recent）
+    3. 逾期超3天未复习（reason=overdue）
+    4. 首学超7天且 repetitions≤1（reason=stale）
+    且未达到「已掌握」门槛（repetitions≥2 且 EF≥2.5 且 interval≥21）。
     GET /teacher/students/<user_id>/weak-words/?wordbook_id=
     """
 
@@ -1296,9 +1403,14 @@ class TeacherStudentWeakWordsView(APIView):
             qs = qs.filter(wordbook_id=int(wb_id))
         qs = qs.select_related("word").order_by("-repetitions")
 
-        recent_since = int(time.time() * 1000) - 30 * 86400000
+        now_ms = int(time.time() * 1000)
+        day_ms = 86400000
+        recent_since = now_ms - 30 * day_ms
+        overdue_cutoff = now_ms - 3 * day_ms
+        stale_cutoff = now_ms - 7 * day_ms
+
         practice_qs = StudyLog.objects.filter(
-            user_id=user_id, source="quiz", grade=0, ts__gte=recent_since,
+            user_id=user_id, source__in=["quiz", "review"], grade=0, ts__gte=recent_since,
         )
         if wb_id:
             practice_qs = practice_qs.filter(wordbook_id=int(wb_id))
@@ -1307,17 +1419,29 @@ class TeacherStudentWeakWordsView(APIView):
             for item in practice_qs.values("word_id").annotate(count=Count("id"))
         }
 
+        # 每词首学时间（最早日志），用于低强度陈旧词判定
+        first_qs = StudyLog.objects.filter(user_id=user_id)
+        if wb_id:
+            first_qs = first_qs.filter(wordbook_id=int(wb_id))
+        first_learn = dict(
+            first_qs.values("word_id").annotate(first_ts=Min("ts")).values_list("word_id", "first_ts")
+        )
+
         result = []
         for p in qs:
             total = p.correct + p.wrong
             error_rate = round(p.wrong / total, 3) if total > 0 else 0
-            is_weak = (
-                (total > 0 and error_rate >= 0.34)
-                or p.ef < 1.8
-                or frequent_practice_wrong.get(p.word_id, 0) >= 2
-            )
+            reason = None
+            if (total > 0 and error_rate >= 0.34) or p.ef < 1.8:
+                reason = "wrong"
+            elif frequent_practice_wrong.get(p.word_id, 0) >= 2:
+                reason = "recent"
+            elif p.due <= overdue_cutoff:
+                reason = "overdue"
+            elif p.repetitions <= 1 and (first_learn.get(p.word_id) or 0) <= stale_cutoff and first_learn.get(p.word_id):
+                reason = "stale"
             is_mastered = p.repetitions >= 2 and p.ef >= 2.5 and p.interval >= 21
-            if is_weak and not is_mastered:
+            if reason and not is_mastered:
                 result.append({
                     "word_id": p.word_id,
                     "word": p.word.word,
@@ -1329,6 +1453,7 @@ class TeacherStudentWeakWordsView(APIView):
                     "repetitions": p.repetitions,
                     "interval": p.interval,
                     "due": p.due,
+                    "reason": reason,
                 })
 
         return Response(result)

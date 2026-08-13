@@ -40,6 +40,7 @@ urlpatterns = [
     path("teacher/students/", views.TeacherStudentListView.as_view()),
     path("teacher/students/<int:user_id>/daily/", views.TeacherStudentDailyView.as_view()),
     path("teacher/students/<int:user_id>/daily/<str:date>/detail/", views.TeacherStudentDailyDetailView.as_view()),
+    path("teacher/students/<int:user_id>/progress/", views.TeacherStudentProgressView.as_view()),
     path("teacher/students/<int:user_id>/weak-words/", views.TeacherStudentWeakWordsView.as_view()),
     path("teacher/students/<int:user_id>/wrong-logs/", views.TeacherStudentWrongLogsView.as_view()),
 ]
