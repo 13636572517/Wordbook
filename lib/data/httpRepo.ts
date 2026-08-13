@@ -781,36 +781,11 @@ export interface StudentDailyDetail {
   words: { word_id: number; word: string; translation: string; total: number; study_count: number; quiz_count: number; review_count: number; correct_count: number; wrong_count: number; last_grade: number; last_source: string; last_ts: number }[];
 }
 
-export interface TeacherWeakWord {
-  word_id: number;
-  word: string;
-  translation: string;
-  ef: number;
-  correct: number;
-  wrong: number;
-  error_rate: number;
-  repetitions: number;
-  interval: number;
-  due: number;
-  /** 薄弱原因：wrong=错误率高 recent=近期屡错 overdue=逾期未复习 stale=低强度陈旧 */
-  reason?: 'wrong' | 'recent' | 'overdue' | 'stale';
-}
-
-export interface StudentProgressSummary {
-  wordbook: { total: number; learned: number; mastered: number; learning: number; due: number };
-  today: { new_words: number; review_words: number };
-  checkin: { date: string; count: number; new_count: number }[];
-  progress: {
-    word_id: number;
-    word: string;
-    translation: string;
-    repetitions: number;
-    due: number;
-    ef: number;
-    correct: number;
-    wrong: number;
-  }[];
-}
+// 类型统一收拢在 lib/data/studentProgress.ts（前端组装器与后端接口同构）
+import type { StudentProgressSummary, WeakWordEntry } from './studentProgress';
+export type { StudentProgressSummary } from './studentProgress';
+/** 教师端薄弱词条目（含 reason 原因标签） */
+export type TeacherWeakWord = WeakWordEntry;
 
 export interface TeacherWrongLog {
   word_id: number;
@@ -852,7 +827,8 @@ export async function fetchStudentWeakWords(
   wordbookId?: number,
 ): Promise<TeacherWeakWord[]> {
   const params = wordbookId ? `?wordbook_id=${wordbookId}` : '';
-  return api<TeacherWeakWord[]>(`/teacher/students/${userId}/weak-words/${params}`);
+  const data = await api<(TeacherWeakWord & { interval?: number })[]>(`/teacher/students/${userId}/weak-words/${params}`);
+  return data.map((w) => ({ ...w, reason: w.reason ?? 'wrong' }));
 }
 
 export async function fetchStudentWrongLogs(

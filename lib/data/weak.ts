@@ -1,5 +1,5 @@
 import type { Repository } from './repo';
-import type { UserWordProgress } from './types';
+import type { StudyLog, UserWordProgress } from './types';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -38,6 +38,57 @@ export function isStaleWeak(p: UserWordProgress, firstLearnTs: number | undefine
   return now - firstLearnTs >= STALE_LEARN_MS;
 }
 
+export type WeakReason = 'wrong' | 'recent' | 'overdue' | 'stale';
+
+export interface WeakLogStats {
+  /** 近 30 天练习/复习答错次数 */
+  frequentWrong: number;
+  /** 该词最早一条学习日志时间（首学时间） */
+  firstLearnTs?: number;
+}
+
+/** 扫描全量日志，得到每个词的 {近期错误次数, 首学时间} */
+export function scanWeakLogs(logs: StudyLog[], now: number): Map<string, WeakLogStats> {
+  const map = new Map<string, WeakLogStats>();
+  for (const log of logs) {
+    if (log.ts > now) continue;
+    let entry = map.get(log.wordId);
+    if (!entry) {
+      entry = { frequentWrong: 0, firstLearnTs: undefined };
+      map.set(log.wordId, entry);
+    }
+    if (entry.firstLearnTs == null || log.ts < entry.firstLearnTs) entry.firstLearnTs = log.ts;
+    if (
+      log.ts >= now - PRACTICE_WRONG_WINDOW_MS
+      && (log.source === 'quiz' || log.source === 'review')
+      && log.grade === 0
+    ) {
+      entry.frequentWrong += 1;
+    }
+  }
+  return map;
+}
+
+const EMPTY_LOG_STATS: WeakLogStats = { frequentWrong: 0, firstLearnTs: undefined };
+
+/**
+ * 薄弱原因判定（优先级 wrong > recent > overdue > stale），非薄弱返回 null。
+ * 学员端与教师端口径同源；后端 TeacherStudentWeakWordsView 保持同样规则。
+ */
+export function getWeakReason(
+  p: UserWordProgress,
+  logStats: WeakLogStats | undefined,
+  now: number,
+): WeakReason | null {
+  const s = logStats ?? EMPTY_LOG_STATS;
+  const reviewed = p.correct + p.wrong;
+  if ((reviewed > 0 && p.wrong / reviewed >= WRONG_RATIO) || p.ef < LOW_EF) return 'wrong';
+  if (s.frequentWrong >= PRACTICE_WRONG_THRESHOLD) return 'recent';
+  if (p.due <= now - OVERDUE_WEAK_MS) return 'overdue';
+  if (p.repetitions <= STALE_MAX_REPS && s.firstLearnTs != null && now - s.firstLearnTs >= STALE_LEARN_MS) return 'stale';
+  return null;
+}
+
 /**
  * Word ids in a wordbook that the user is weak on, based on their progress.
  * Returns [] for empty wordbooks (safe to feed straight into getNextQuizWord).
@@ -51,34 +102,13 @@ export async function getWeakWordIds(
   const words = await repo.getWordsByWordbook(wordbookId);
   // 全量日志：既要 30 天窗口内的练习错误次数，也要每个词的首学时间（可能更早）
   const logs = await repo.listStudyLogs(userId, wordbookId, {});
-  const practiceWrongCounts = new Map<string, number>();
-  const firstLearnTs = new Map<string, number>();
-  for (const log of logs) {
-    if (log.ts > now) continue;
-    const prev = firstLearnTs.get(log.wordId);
-    if (prev == null || log.ts < prev) firstLearnTs.set(log.wordId, log.ts);
-    if (
-      log.ts >= now - PRACTICE_WRONG_WINDOW_MS
-      && (log.source === 'quiz' || log.source === 'review')
-      && log.grade === 0
-    ) {
-      practiceWrongCounts.set(log.wordId, (practiceWrongCounts.get(log.wordId) ?? 0) + 1);
-    }
-  }
+  const logStats = scanWeakLogs(logs, now);
 
   const ids: string[] = [];
   for (const w of words) {
     const p = await repo.getProgress(userId, wordbookId, w.id);
     if (!p) continue;
-    const frequentPracticeWrong = (practiceWrongCounts.get(w.id) ?? 0) >= PRACTICE_WRONG_THRESHOLD;
-    if (
-      isWeakProgress(p)
-      || frequentPracticeWrong
-      || isOverdueWeak(p, now)
-      || isStaleWeak(p, firstLearnTs.get(w.id), now)
-    ) {
-      ids.push(w.id);
-    }
+    if (getWeakReason(p, logStats.get(w.id), now) != null) ids.push(w.id);
   }
   return ids;
 }
