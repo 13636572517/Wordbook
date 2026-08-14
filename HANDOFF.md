@@ -834,7 +834,7 @@ todayCounts.ts、progressAdvice.ts、backend models/serializers/views + migratio
 **数据流**：学员端无教师接口权限，全部经 repo 抽象前端组装（云端/本地通用），
 与教师端后端接口同构，保证两端看到的错题/薄弱词数据一致。
 
-## 35. UI 全面优化（2026-08-14）：主题锁定 + 信息架构重构 + 交互打磨（`aca6c71`，待部署）
+## 35. UI 全面优化（2026-08-14）：主题锁定 + 信息架构重构 + 交互打磨（`aca6c71`，已部署）
 
 **背景**：全站 UI 体检发现三类问题：P0 浅色主题破版/硬编码色散落/FlashCard 手势冲突；
 P1 信息架构重叠（统计 vs 进度）/反馈弱/布局不对称；P2 缺桌面适配/缺搜索/规范缺失。
@@ -882,5 +882,9 @@ P1 信息架构重叠（统计 vs 进度）/反馈弱/布局不对称；P2 缺�
 **验证**：tsc 0 错误；dev server 预览 5 个 Tab 全部渲染正常，console 无报错；
 数据页四子 Tab 切换、练习页通栏卡、长按删除提示均人工确认。
 
-**待办**：部署需在服务器执行 `bash /opt/learning/deploy.sh`（带 EXPO_PUBLIC_USE_CLOUD=true），
-部署前需向用户确认；部署后验证线上 5 Tab 与登录流程（尤其云端 CloudLoginScreen 未被树摇）。
+**部署（2026-08-14 完成）**：用户确认后，服务器 `git pull origin main`（ffbed75→037bca2 fast-forward）
++ `bash /opt/learning/deploy.sh` 构建部署。验证全过：bundle 4,181,366 bytes（> 4,116,000），
+`GESP` 计数 2、`loginError` 计数 2（CloudLoginScreen 未被树摇）；静态路由 18 条含新 `/data`，
+旧 /stats、/progress 已移除。Browser 实机验证：线上登录界面完整（账号/密码/登录按钮），
+暗色主题渲染正常，console 仅 1 条未登录时的预期 401（/api/me/）。
+登录后 5 Tab 与数据页四子 Tab 的人工验证由用户在真实账号上完成。
