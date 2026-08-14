@@ -128,6 +128,7 @@ export async function speakWord(
 // --- Web Speech API 实现（同步，无 await）---
 let webVoices: SpeechSynthesisVoice[] = [];
 let dictAudio: HTMLAudioElement | null = null;
+const DICT_AUDIO_ELEMENT_ID = 'wordhoard-tts-player';
 
 function refreshWebVoices(): void {
   try {
@@ -170,16 +171,32 @@ function pickWebVoice(ttsCode: string): SpeechSynthesisVoice | null {
   return exact ?? langVoices[0];
 }
 
-function playAudioWithFallback(urls: string[], onAllFailed: () => void): void {
-  // 必须在用户手势内同步调用 play()（iOS/移动端自动播放限制）
-  if (dictAudio) {
-    try {
-      dictAudio.pause();
-    } catch {
-      /* ignore */
-    }
-    dictAudio = null;
+function getDictAudio(): HTMLAudioElement {
+  if (dictAudio) return dictAudio;
+
+  const existing = document.getElementById(DICT_AUDIO_ELEMENT_ID);
+  const audio = existing instanceof HTMLAudioElement ? existing : document.createElement('audio');
+
+  audio.id = DICT_AUDIO_ELEMENT_ID;
+  audio.preload = 'auto';
+  audio.volume = 1;
+  audio.muted = false;
+  audio.setAttribute('playsinline', '');
+
+  if (!existing) {
+    audio.style.display = 'none';
+    document.body.appendChild(audio);
   }
+
+  dictAudio = audio;
+  return audio;
+}
+
+function playAudioWithFallback(urls: string[], onAllFailed: () => void): void {
+  // 必须在用户手势内同步调用 play()（iOS/移动端自动播放限制）。
+  // 复用挂在 DOM 上的播放器，避免 PWA/WebView 对临时 Audio() 的静默拦截。
+  const audio = getDictAudio();
+  audio.pause();
   let idx = 0;
   const tryNext = () => {
     if (idx >= urls.length) {
@@ -188,11 +205,19 @@ function playAudioWithFallback(urls: string[], onAllFailed: () => void): void {
     }
     const url = urls[idx++];
     try {
-      const audio = new Audio(url);
-      dictAudio = audio;
-      audio.onerror = tryNext;
+      audio.onerror = () => {
+        audio.onerror = null;
+        tryNext();
+      };
+      audio.src = url;
+      audio.currentTime = 0;
       const p = audio.play();
-      if (p && typeof p.catch === 'function') p.catch(tryNext);
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          audio.onerror = null;
+          tryNext();
+        });
+      }
     } catch {
       tryNext();
     }
@@ -240,7 +265,7 @@ export function stopSpeaking(): void {
   if (Platform.OS === 'web') {
     if (dictAudio) {
       dictAudio.pause();
-      dictAudio = null;
+      dictAudio.currentTime = 0;
     }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
