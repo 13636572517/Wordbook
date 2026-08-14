@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-08-11（「进度」Tab 上线：总体进度/需加强词/建议 + 目标完成日期）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-08-14（UI 全面优化：锁定暗色主题 + 语义色收敛、统计/进度合并为「数据」Tab、FlashCard 手势修复、答题反馈增强、桌面限宽与词本搜索）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -36,6 +36,7 @@
 
 ### 最近提交（main，新→旧）
 ```
+aca6c71 feat: UI全面优化——锁定暗色主题+语义色收敛、统计/进度合并为数据Tab、FlashCard手势修复、答题反馈增强、桌面限宽与词本搜索
 c0bb2f1 feat: 学员统计页升级为概览/薄弱词/错题三Tab，错题口径与教师端同源
 f24bcec fix: 打卡PC单行布局；学员详情缺省选中最后学习词本；修复全部词本A-Z假100%
 75e7969 feat: 统一学员统计视图——概览/打卡/AZ合并，打卡自适应，学员统计页复用教师端同款UI
@@ -832,3 +833,54 @@ todayCounts.ts、progressAdvice.ts、backend models/serializers/views + migratio
 
 **数据流**：学员端无教师接口权限，全部经 repo 抽象前端组装（云端/本地通用），
 与教师端后端接口同构，保证两端看到的错题/薄弱词数据一致。
+
+## 35. UI 全面优化（2026-08-14）：主题锁定 + 信息架构重构 + 交互打磨（`aca6c71`，待部署）
+
+**背景**：全站 UI 体检发现三类问题：P0 浅色主题破版/硬编码色散落/FlashCard 手势冲突；
+P1 信息架构重叠（统计 vs 进度）/反馈弱/布局不对称；P2 缺桌面适配/缺搜索/规范缺失。
+本次在 `feature/ui-overhaul` 分支一次性完成，验证后合入 main。
+
+**主题与颜色（P0）**：
+- 产品锁定暗色主题：`components/useColorScheme.ts` 强制返回 `'dark'`，
+  `constants/Colors.ts` 删除 light 分支，`app/_layout.tsx` 固定 CustomDarkTheme。
+  未来若要恢复浅色主题，需先完成全站颜色 token 化再放开。
+- 语义色收敛进 `Colors.dark`：`success/warning/danger/info` + `onTint`（金色按钮文字色），
+  学习/练习/数据/我的/QuizRunner/StudentProgressParts 等页面的散落硬编码全部替换。
+- GRADES 评分按钮数组去重：`constants/Grades.ts` 统一定义（学习页/数据页共用）。
+- 新增 `constants/Layout.ts`：spacing/radius 刻度 + `maxContentWidth: 560`，
+  新组件统一从此取值（存量页面未全量重刷，后续逐步对齐）。
+
+**信息架构（P1）**：
+- 「统计」+「进度」两 Tab 合并为「数据」（`app/(tabs)/data.tsx`，删除 stats.tsx/progress.tsx），
+  四个子 Tab：**概览**（总体进度卡+打卡日历+A-Z）/ **薄弱词**（含专项复习与专项练习）/
+  **错题**（WrongList）/ **建议**（buildAdvice）。教师入口保留在页首。
+  注意：§34 提到的 `app/(tabs)/stats.tsx` 已不存在，相关逻辑均在 data.tsx。
+- 底部 Tab 6→5（学习/练习/词本/数据/我的）；原「进度」Tab 的 exclamation-circle 图标弃用，
+  「数据」用 bar-chart。Tab 栏去掉固定 height（交回 React Navigation 处理底部安全区），
+  背景改 `colors.background`、上边框加粗到 1px。
+
+**组件与交互**：
+- `FlashCard`：修翻面/滚动冲突——正面整卡点击翻面，翻面后正面禁用；
+  背面内容可自由滚动，仅通过底部「点击返回正面」按钮翻回；卡片高度随屏高自适应（上限 340）。
+- `QuizRunner`：答对/答错徽章弹入动画（Animated spring）；选择题/例句选择判定后
+  选项行尾显示 ✓/✗ 图标；语义色替换。
+- 练习页：5 张题型卡的最后一张通栏（消除不对称）；数量下拉菜单加全屏透明遮罩
+  （点击外部关闭）+ 阴影悬浮感。
+- 文案中文统一："All caught up!"→"今日任务都完成啦"、"Tap the card to reveal"→"点击卡片查看释义"。
+- 新增 `components/EmptyState.tsx`：emoji+标题+副标题+操作区，学习页四处空/完成状态全部改用。
+- `MarqueeBar` 升级为真进度条：完成度百分比 = (新词目标进度 + 练习目标进度)/2，
+  有待复习词时条变警示色。
+
+**适配与新能力（P2）**：
+- 桌面 Web 限宽：5 个 Tab 页 + 词本详情均加 `maxWidth: 560` 居中内容列，宽屏不再拉伸铺满。
+- 词本详情页新增搜索栏（单词/释义内存过滤 + 清空按钮 + 空结果提示），6000 词大词本可快速定位。
+- 词本页删除自定义词本改为**长按卡片**（垃圾桶图标移除，下方有文字提示），降低误触。
+
+**额外修复**：`SessionProvider.createUser` 退出登录后新建账户不恢复 wordbooks/wordbook，
+导致学习页永久转圈；现与 switchUser 一致恢复默认系统词本（验证时发现的真实 bug）。
+
+**验证**：tsc 0 错误；dev server 预览 5 个 Tab 全部渲染正常，console 无报错；
+数据页四子 Tab 切换、练习页通栏卡、长按删除提示均人工确认。
+
+**待办**：部署需在服务器执行 `bash /opt/learning/deploy.sh`（带 EXPO_PUBLIC_USE_CLOUD=true），
+部署前需向用户确认；部署后验证线上 5 Tab 与登录流程（尤其云端 CloudLoginScreen 未被树摇）。
