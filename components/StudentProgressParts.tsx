@@ -41,7 +41,7 @@ export function OverviewCard({ summary, colors }: { summary: StudentProgressSumm
   return (
     <View style={[pStyles.card, { backgroundColor: colors.card }]}>
       <Text style={[pStyles.cardTitle, { color: colors.text }]}>词本完成度</Text>
-      <View style={[pStyles.barBg, { marginTop: 12 }]}>
+      <View style={[pStyles.barBg, { marginTop: 12, backgroundColor: colors.background }]}>
         <View style={[pStyles.barFill, { width: `${pct}%`, backgroundColor: colors.tint }]} />
       </View>
       <Text style={[pStyles.meta, { color: colors.subtitle, marginTop: 8 }]}>
@@ -49,16 +49,16 @@ export function OverviewCard({ summary, colors }: { summary: StudentProgressSumm
       </Text>
       <View style={{ flexDirection: 'row', marginTop: 14 }}>
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={[pStyles.bigNum, { color: '#30A46C' }]}>{mastered}</Text>
-          <Text style={pStyles.bigLabel}>已掌握</Text>
+          <Text style={[pStyles.bigNum, { color: colors.success }]}>{mastered}</Text>
+          <Text style={[pStyles.bigLabel, { color: colors.subtitle }]}>已掌握</Text>
         </View>
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={[pStyles.bigNum, { color: '#F5A623' }]}>{learning}</Text>
-          <Text style={pStyles.bigLabel}>学习中</Text>
+          <Text style={[pStyles.bigNum, { color: colors.warning }]}>{learning}</Text>
+          <Text style={[pStyles.bigLabel, { color: colors.subtitle }]}>学习中</Text>
         </View>
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={[pStyles.bigNum, { color: due > 0 ? '#E5484D' : colors.text }]}>{due}</Text>
-          <Text style={pStyles.bigLabel}>待复习</Text>
+          <Text style={[pStyles.bigNum, { color: due > 0 ? colors.danger : colors.text }]}>{due}</Text>
+          <Text style={[pStyles.bigLabel, { color: colors.subtitle }]}>待复习</Text>
         </View>
       </View>
       <View style={[pStyles.todayRow, { backgroundColor: colors.background }]}>
@@ -115,7 +115,7 @@ export function CheckinCard({ summary, colors }: { summary: StudentProgressSumma
         ))}
       </View>
       <View style={{ flexDirection: 'row', gap: 14, marginTop: 12 }}>
-        {[['未学', 'rgba(128,128,128,0.15)'], ['<30', 'rgba(48,164,108,0.3)'], ['30-59', 'rgba(48,164,108,0.6)'], ['≥60', '#30A46C']].map(([label, bg]) => (
+        {[['未学', 'rgba(128,128,128,0.15)'], ['<30', 'rgba(48,164,108,0.3)'], ['30-59', 'rgba(48,164,108,0.6)'], ['≥60', colors.success]].map(([label, bg]) => (
           <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: bg as string }} />
             <Text style={[pStyles.tinyMeta, { color: colors.subtitle }]}>{label}</Text>
@@ -175,10 +175,10 @@ export function AZList({
   const letters = [...groups.keys()].sort();
 
   const statusColor = (wordId: number | undefined, prog: ProgItem | null): string => {
-    if (wordId != null && weakIds.has(String(wordId))) return '#E5484D';
+    if (wordId != null && weakIds.has(String(wordId))) return colors.danger;
     if (!prog) return 'rgba(128,128,128,0.4)';
-    if (prog.repetitions >= 3) return '#30A46C';
-    return '#F5A623';
+    if (prog.repetitions >= 3) return colors.success;
+    return colors.warning;
   };
 
   return (
@@ -212,7 +212,7 @@ export function AZList({
                 </View>
               </View>
               {hasWordbook && (
-                <View style={[pStyles.barBg, { marginTop: 8 }]}>
+                <View style={[pStyles.barBg, { marginTop: 8, backgroundColor: colors.background }]}>
                   <View style={[pStyles.barFill, { width: `${groupPct}%`, backgroundColor: colors.tint }]} />
                 </View>
               )}
@@ -255,7 +255,7 @@ export function WeakList({ words, colors }: { words: WeakWordEntry[]; colors: Re
         <View key={w.word_id} style={[pStyles.card, { backgroundColor: colors.card }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={[pStyles.cardTitle, { color: colors.text }]}>{w.word}</Text>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#E5484D' }}>{reasonTag(w)}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.danger }}>{reasonTag(w)}</Text>
           </View>
           <Text style={[pStyles.subtitle, { color: colors.pinyin }]} numberOfLines={1}>{w.translation}</Text>
           <Text style={[pStyles.tinyMeta, { color: colors.subtitle, marginTop: 6 }]}>
@@ -283,7 +283,7 @@ export function WrongList({ logs, colors }: { logs: WrongLogEntry[]; colors: Ret
         <View key={w.word_id} style={[pStyles.card, { backgroundColor: colors.card }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={[pStyles.cardTitle, { color: colors.text }]}>{w.word}</Text>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#E5484D' }}>×{w.wrong_count}</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.danger }}>×{w.wrong_count}</Text>
           </View>
           <Text style={[pStyles.subtitle, { color: colors.pinyin }]}>{w.translation}</Text>
           <Text style={[pStyles.tinyMeta, { color: colors.subtitle, marginTop: 6 }]}>
@@ -324,8 +324,8 @@ const pStyles = StyleSheet.create({
   meta: { fontSize: 13 },
   tinyMeta: { fontSize: 12 },
   bigNum: { fontSize: 20, fontWeight: '800' },
-  bigLabel: { fontSize: 10, color: '#9C8F7E', marginTop: 2 },
-  barBg: { height: 6, backgroundColor: '#2A2520', borderRadius: 3, overflow: 'hidden' },
+  bigLabel: { fontSize: 10, marginTop: 2 },
+  barBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   barFill: { height: 6, borderRadius: 3 },
   todayRow: { flexDirection: 'row', justifyContent: 'space-between', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 14 },
   azBody: {

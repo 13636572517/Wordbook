@@ -27,6 +27,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   ScrollView,
   StyleSheet,
   Text,
@@ -325,7 +326,7 @@ export default function QuizRunner({
                 <Text style={[styles.exitCancelText, { color: colors.text }]}>取消</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.exitConfirmBtn, { backgroundColor: '#E5484D' }]}
+                style={[styles.exitConfirmBtn, { backgroundColor: colors.danger }]}
                 onPress={() => onExit?.()}
               >
                 <Text style={styles.exitConfirmText}>确定退出</Text>
@@ -357,6 +358,19 @@ function QuestionCard({
   const [hintUsed, setHintUsed] = useState(false);
   const [hintDisplay, setHintDisplay] = useState(''); // 提示显示在题干区
   const inputRef = useRef<any>(null);
+  // 反馈徽章弹入动画：答对/答错后缩放淡入，增强即时反馈感
+  const popAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (graded) {
+      popAnim.setValue(0);
+      Animated.spring(popAnim, {
+        toValue: 1,
+        friction: 5,
+        tension: 120,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [graded]);
 
   // 提示功能：揭示 30% 的字母，显示在题干区（不填入输入框）
   const useHint = () => {
@@ -428,9 +442,9 @@ function QuestionCard({
               const isAnswer = opt === quiz.answer;
               const bg = graded
                 ? isAnswer
-                  ? '#30A46C'
+                  ? colors.success
                   : chosen
-                    ? '#E5484D'
+                    ? colors.danger
                     : colors.card
                 : colors.card;
               return (
@@ -441,14 +455,24 @@ function QuestionCard({
                   disabled={graded}
                   activeOpacity={0.8}
                 >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      { color: graded && (isAnswer || chosen) ? '#FFF' : colors.text },
-                    ]}
-                  >
-                    {opt}
-                  </Text>
+                  <View style={styles.optionRow}>
+                    <Text
+                      style={[
+                        styles.optionText,
+                        { color: graded && (isAnswer || chosen) ? '#FFF' : colors.text },
+                      ]}
+                    >
+                      {opt}
+                    </Text>
+                    {/* 判定后：正确项打勾，错选项打叉 */}
+                    {graded && (isAnswer || chosen) && (
+                      <FontAwesome
+                        name={isAnswer ? 'check' : 'times'}
+                        size={16}
+                        color="#FFF"
+                      />
+                    )}
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -510,9 +534,9 @@ function QuestionCard({
               const isAnswer = opt === quiz.answer;
               const bg = graded
                 ? isAnswer
-                  ? '#30A46C'
+                  ? colors.success
                   : chosen
-                    ? '#E5484D'
+                    ? colors.danger
                     : colors.card
                 : colors.card;
               return (
@@ -523,14 +547,23 @@ function QuestionCard({
                   disabled={graded}
                   activeOpacity={0.8}
                 >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      { color: graded && (isAnswer || chosen) ? '#FFF' : colors.text },
-                    ]}
-                  >
-                    {opt}
-                  </Text>
+                  <View style={styles.optionRow}>
+                    <Text
+                      style={[
+                        styles.optionText,
+                        { color: graded && (isAnswer || chosen) ? '#FFF' : colors.text },
+                      ]}
+                    >
+                      {opt}
+                    </Text>
+                    {graded && (isAnswer || chosen) && (
+                      <FontAwesome
+                        name={isAnswer ? 'check' : 'times'}
+                        size={16}
+                        color="#FFF"
+                      />
+                    )}
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -595,10 +628,21 @@ function QuestionCard({
       {/* 判定后反馈 */}
       {graded && (
         <View style={styles.feedbackWrap}>
-          <View
+          <Animated.View
             style={[
               styles.markBadge,
-              { backgroundColor: correct ? '#30A46C' : '#E5484D' },
+              { backgroundColor: correct ? colors.success : colors.danger },
+              {
+                opacity: popAnim,
+                transform: [
+                  {
+                    scale: popAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.6, 1],
+                    }),
+                  },
+                ],
+              },
             ]}
           >
             <FontAwesome
@@ -607,7 +651,7 @@ function QuestionCard({
               color="#FFF"
             />
             <Text style={styles.markText}>{correct ? '答对' : '答错'}</Text>
-          </View>
+          </Animated.View>
           <Text style={[styles.answerLine, { color: colors.subtitle }]}>
             正确答案：{quiz.answer}
           </Text>
@@ -644,7 +688,7 @@ function DoneScreen({
     >
       <Text style={[styles.doneTitle, { color: colors.text }]}>测试完成</Text>
       <View style={[styles.rateCard, { backgroundColor: colors.card }]}>
-        <Text style={[styles.rateBig, { color: '#30A46C' }]}>{pct}%</Text>
+        <Text style={[styles.rateBig, { color: colors.success }]}>{pct}%</Text>
         <Text style={[styles.rateSub, { color: colors.subtitle }]}>
           正确率 {right} / {total}
         </Text>
@@ -672,7 +716,7 @@ function DoneScreen({
           <FontAwesome
             name={r.correct ? 'check-circle' : 'times-circle'}
             size={22}
-            color={r.correct ? '#30A46C' : '#E5484D'}
+            color={r.correct ? colors.success : colors.danger}
           />
         </View>
       ))}
@@ -730,7 +774,13 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 18,
   },
-  optionText: { fontSize: 17, fontWeight: '600' },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  optionText: { fontSize: 17, fontWeight: '600', flex: 1 },
   hintText: {
     fontSize: 22,
     letterSpacing: 2,

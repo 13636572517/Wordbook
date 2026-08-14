@@ -10,6 +10,7 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
+    useWindowDimensions,
     View,
 } from 'react-native';
 import useColors from './useColors';
@@ -24,6 +25,9 @@ export default function FlashCard({ word, language, onFlip }: Props) {
   const [isFlipped, setIsFlipped] = useState(false);
   const flipAnim = useRef(new Animated.Value(0)).current;
   const colors = useColors();
+  const { height: winHeight } = useWindowDimensions();
+  // 卡片高度随屏幕自适应，小屏不被评分按钮挤压
+  const cardHeight = Math.min(340, Math.round(winHeight * 0.45));
 
   const flipCard = () => {
     const toValue = isFlipped ? 0 : 1;
@@ -68,29 +72,35 @@ export default function FlashCard({ word, language, onFlip }: Props) {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        activeOpacity={0.95}
-        onPress={flipCard}
-        style={styles.cardWrapper}
-      >
-        <Animated.View
-          style={[
-            styles.card,
-            { backgroundColor: colors.card, ...cardShadow },
-            {
-              transform: [{ rotateY: frontInterpolate }],
-              opacity: frontOpacity,
-            },
-          ]}
+      <View style={[styles.cardWrapper, { height: cardHeight }]}>
+        {/* 正面：整卡点击翻面；翻面后禁用，避免与背面滚动冲突 */}
+        <TouchableOpacity
+          activeOpacity={0.95}
+          onPress={flipCard}
+          disabled={isFlipped}
+          style={[styles.card, { pointerEvents: isFlipped ? 'none' : 'auto' }]}
         >
-          <Text style={[styles.wordFront, { color: colors.text }]}>
-            {word.word}
-          </Text>
-        </Animated.View>
+          <Animated.View
+            style={[
+              styles.cardFace,
+              { backgroundColor: colors.card, ...cardShadow },
+              {
+                transform: [{ rotateY: frontInterpolate }],
+                opacity: frontOpacity,
+              },
+            ]}
+          >
+            <Text style={[styles.wordFront, { color: colors.text }]}>
+              {word.word}
+            </Text>
+          </Animated.View>
+        </TouchableOpacity>
 
+        {/* 背面：内容可滚动，仅通过底部按钮翻回，滚动不会误触发翻面 */}
         <Animated.View
+          pointerEvents={isFlipped ? 'auto' : 'none'}
           style={[
-            styles.card,
+            styles.cardFace,
             styles.cardBack,
             { backgroundColor: colors.card, ...cardShadow },
             {
@@ -100,6 +110,7 @@ export default function FlashCard({ word, language, onFlip }: Props) {
           ]}
         >
           <ScrollView
+            style={styles.backScroll}
             contentContainerStyle={styles.backContent}
             showsVerticalScrollIndicator={false}
           >
@@ -168,8 +179,16 @@ export default function FlashCard({ word, language, onFlip }: Props) {
               </View>
             )}
           </ScrollView>
+          <TouchableOpacity
+            style={[styles.flipBackBtn, { backgroundColor: colors.background }]}
+            onPress={flipCard}
+            activeOpacity={0.7}
+          >
+            <FontAwesome name="rotate-left" size={13} color={colors.subtitle} />
+            <Text style={[styles.flipBackText, { color: colors.subtitle }]}>点击返回正面</Text>
+          </TouchableOpacity>
         </Animated.View>
-      </TouchableOpacity>
+      </View>
 
       <TouchableOpacity
         onPress={() => speakWord(word.word, language)}
@@ -190,9 +209,13 @@ const styles = StyleSheet.create({
   },
   cardWrapper: {
     width: '100%',
-    height: 340,
   },
   card: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+  cardFace: {
     position: 'absolute',
     width: '100%',
     height: '100%',
@@ -203,14 +226,33 @@ const styles = StyleSheet.create({
     backfaceVisibility: 'hidden',
   },
   cardBack: {
-    position: 'absolute',
     top: 0,
     justifyContent: 'flex-start',
     paddingTop: 24,
+    paddingBottom: 12,
+  },
+  backScroll: {
+    width: '100%',
+    flex: 1,
   },
   backContent: {
     alignItems: 'center',
-    paddingBottom: 16,
+    paddingBottom: 8,
+  },
+  flipBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    marginTop: 6,
+  },
+  flipBackText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   wordFront: {
     fontSize: 48,

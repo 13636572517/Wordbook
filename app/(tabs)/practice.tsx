@@ -9,6 +9,7 @@ import { type RangeKind } from '@/lib/quizgen';
 import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
 import QuizRunner from '@/components/QuizRunner';
+import Layout from '@/constants/Layout';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useEffect, useState } from 'react';
@@ -126,21 +127,32 @@ export default function PracticeScreen() {
   if (mode === 'quiz') {
     return (
       <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        {title}
-        <QuizRunner
-          range={activeRange}
-          opts={activeOpts}
-          types={[activeType]}
-          limit={practiceGoal}
-          onExit={() => setMode('menu')}
-        />
+        <View style={styles.contentCol}>
+          {title}
+          <QuizRunner
+            range={activeRange}
+            opts={activeOpts}
+            types={[activeType]}
+            limit={practiceGoal}
+            onExit={() => setMode('menu')}
+          />
+        </View>
       </View>
     );
   }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {title}
+      {/* 下拉菜单打开时的透明遮罩：点击外部关闭 */}
+      {goalMenuOpen && (
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setGoalMenuOpen(false)}
+        />
+      )}
+      <View style={styles.contentCol}>
+        {title}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <Text style={[styles.scopeHint, { color: colors.pinyin }]}>练习「{wordbook?.name ?? '当前词本'}」中已学过的单词</Text>
         <View style={styles.settingRow}>
@@ -188,29 +200,50 @@ export default function PracticeScreen() {
 
         <Text style={[styles.sectionTitle, { color: colors.subtitle, marginTop: 22 }]}>选择题型</Text>
         <View style={styles.typeGrid}>
-          {TYPES.map((type) => (
-            <TouchableOpacity
-              key={type.key}
-              style={[styles.typeCard, { backgroundColor: colors.card, opacity: startingType && startingType !== type.key ? 0.55 : 1 }]}
-              onPress={() => startQuiz(type.key)}
-              disabled={startingType != null || settingsLoading}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.typeIconWrap, { backgroundColor: colors.tint + '22' }]}>
-                {startingType === type.key || settingsLoading ? <ActivityIndicator size="small" color={colors.tint} /> : <FontAwesome name={type.icon} size={20} color={colors.tint} />}
-              </View>
-              <Text style={[styles.typeLabel, { color: colors.text }]}>{type.label}</Text>
-              <Text style={[styles.typeDesc, { color: colors.subtitle }]} numberOfLines={1}>{type.desc}</Text>
-            </TouchableOpacity>
-          ))}
+          {TYPES.map((type, i) => {
+            // 题型数为奇数时，最后一张卡通栏，避免布局不对称
+            const full = TYPES.length % 2 === 1 && i === TYPES.length - 1;
+            return (
+              <TouchableOpacity
+                key={type.key}
+                style={[
+                  styles.typeCard,
+                  { backgroundColor: colors.card, opacity: startingType && startingType !== type.key ? 0.55 : 1 },
+                  full && { width: '100%' },
+                ]}
+                onPress={() => startQuiz(type.key)}
+                disabled={startingType != null || settingsLoading}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.typeIconWrap, { backgroundColor: colors.tint + '22' }]}>
+                  {startingType === type.key || settingsLoading ? <ActivityIndicator size="small" color={colors.tint} /> : <FontAwesome name={type.icon} size={20} color={colors.tint} />}
+                </View>
+                <Text style={[styles.typeLabel, { color: colors.text }]}>{type.label}</Text>
+                <Text style={[styles.typeDesc, { color: colors.subtitle }]} numberOfLines={1}>{type.desc}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // 桌面宽屏下内容居中限宽
+  contentCol: {
+    flex: 1,
+    width: '100%',
+    maxWidth: Layout.maxContentWidth,
+    alignSelf: 'center',
+  },
+  // 下拉菜单遮罩：覆盖全屏，点击关闭菜单
+  menuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
+  },
   title: { fontSize: 28, fontWeight: '700', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
@@ -220,7 +253,16 @@ const styles = StyleSheet.create({
   settingHint: { fontSize: 12, marginTop: 4 },
   goalSelect: { minWidth: 94, height: 40, borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   goalSelectText: { fontSize: 14, fontWeight: '700' },
-  goalMenu: { position: 'absolute', zIndex: 10, right: 0, top: 44, width: 94, borderWidth: 1, borderRadius: 6, overflow: 'hidden' },
+  goalMenu: {
+    position: 'absolute', zIndex: 10, right: 0, top: 44, width: 94,
+    borderWidth: 1, borderRadius: 6, overflow: 'hidden',
+    // 悬浮感：阴影区分于下方内容
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
   goalOption: { paddingHorizontal: 12, paddingVertical: 10 },
   goalOptionText: { fontSize: 14, fontWeight: '600' },
   sectionTitle: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },

@@ -37,22 +37,19 @@ import {
 } from '@/lib/data/httpRepo';
 import QuizRunner from '@/components/QuizRunner';
 import { useWebAlert } from '@/components/WebAlert';
+import EmptyState from '@/components/EmptyState';
 import { advanceExtraPractice, nextExtraBatchStep } from '@/lib/extraPractice';
 import { useDailyProgress } from '@/components/useDailyProgress';
 import MarqueeBar from '@/components/MarqueeBar';
 import DailyPlanModal from '@/components/DailyPlanModal';
+import GRADES from '@/constants/Grades';
+import Layout from '@/constants/Layout';
 
 const ENGLISH = getLanguageByCode('en');
 // 云端模式判定改用运行时比较（repo===httpRepo），不再依赖编译期
 // EXPO_PUBLIC_USE_CLOUD 常量——该常量曾被 Metro 缓存固化成 false，
 // 导致学习页「异步补充释义」整段被死代码消除（只见翻译、不见释义/例句/词组）。
 const isCloud = repo === httpRepo;
-const GRADES: { grade: Grade; label: string; cn: string; color: string }[] = [
-  { grade: 0, label: 'Again', cn: '不会', color: '#E5484D' },
-  { grade: 1, label: 'Hard', cn: '模糊', color: '#F5A623' },
-  { grade: 2, label: 'Good', cn: '认识', color: '#30A46C' },
-  { grade: 3, label: 'Easy', cn: '很熟', color: '#3B82F6' },
-];
 
 type ReviewPhase =
   | null
@@ -671,7 +668,7 @@ export default function HomeScreen() {
           onPress={retryLoad}
           activeOpacity={0.8}
         >
-          <Text style={styles.retryText}>重试</Text>
+          <Text style={[styles.retryText, { color: colors.onTint }]}>重试</Text>
         </TouchableOpacity>
       </View>
     );
@@ -697,6 +694,7 @@ export default function HomeScreen() {
         { backgroundColor: colors.background, paddingTop: insets.top },
       ]}
     >
+      <View style={styles.contentCol}>
       {/* 强制 Metro 保留 review 相关代码：reviewPhase 作为 data 属性引用 */}
       <View style={{ display: 'none' }} data-review={reviewPhase || 'idle'} data-extra={extraWordIdsRef.current.size} />
       <View style={styles.header}>
@@ -740,19 +738,19 @@ export default function HomeScreen() {
             icon="clock-o"
             value={String(stats.due)}
             label="待复习"
-            color="#F5A623"
+            color={colors.warning}
           />
           <StatChip
             icon="star"
             value={String(stats.mastered)}
             label="已掌握"
-            color="#30A46C"
+            color={colors.success}
           />
           <StatChip
             icon="percent"
             value={`${Math.round(stats.accuracy * 100)}%`}
             label="正确率"
-            color="#3B82F6"
+            color={colors.info}
           />
         </View>
       )}
@@ -791,13 +789,13 @@ export default function HomeScreen() {
           {reviewFlipped && (
             <View style={styles.reviewButtons}>
               <TouchableOpacity
-                style={[styles.reviewBtn, { backgroundColor: '#E5484D' }]}
+                style={[styles.reviewBtn, { backgroundColor: colors.danger }]}
                 onPress={() => onReviewKnow(false)}
               >
                 <Text style={styles.reviewBtnText}>不认识</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.reviewBtn, { backgroundColor: '#30A46C' }]}
+                style={[styles.reviewBtn, { backgroundColor: colors.success }]}
                 onPress={() => onReviewKnow(true)}
               >
                 <Text style={styles.reviewBtnText}>认识</Text>
@@ -854,23 +852,20 @@ export default function HomeScreen() {
       )}
 
       {reviewPhase === 'done' && (
-        <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>✅</Text>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>
-            {extraWordIdsRef.current.size > 0 ? '加练巩固完成！' : '巩固完成！'}
-          </Text>
-          <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
-            {extraWordIdsRef.current.size > 0
-              ? `本轮 ${todayReviewWords.length} 个新词已巩固`
-              : `今日新词已巩固，点击返回继续学习或加练`}
-          </Text>
+        <EmptyState
+          icon="✅"
+          title={extraWordIdsRef.current.size > 0 ? '加练巩固完成！' : '巩固完成！'}
+          subtitle={extraWordIdsRef.current.size > 0
+            ? `本轮 ${todayReviewWords.length} 个新词已巩固`
+            : '今日新词已巩固，点击返回继续学习或加练'}
+        >
           {reviewChoiceScore && (
-            <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
+            <Text style={[styles.scoreLine, { color: colors.subtitle }]}>
               选择释义：{reviewChoiceScore.correct}/{reviewChoiceScore.total}
             </Text>
           )}
           {reviewDictScore && (
-            <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
+            <Text style={[styles.scoreLine, { color: colors.subtitle }]}>
               默写：{reviewDictScore.correct}/{reviewDictScore.total}
             </Text>
           )}
@@ -878,11 +873,11 @@ export default function HomeScreen() {
             style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]}
             onPress={() => exitReview(true)}
           >
-            <Text style={[styles.reviewStartText, { color: '#0D0D0D' }]}>
+            <Text style={[styles.reviewStartText, { color: colors.onTint }]}>
               返回学习
             </Text>
           </TouchableOpacity>
-        </View>
+        </EmptyState>
       )}
 
       {reviewPhase === 'fetching' && (
@@ -895,12 +890,13 @@ export default function HomeScreen() {
       )}
 
       {!reviewPhase && extraDecisionPending && (
-        <View style={styles.emptyContainer}>
-          <FontAwesome name="flag-checkered" size={44} color={colors.tint} />
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>本轮加练完成</Text>
-          <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>10 个新词已经学完，接下来怎么安排？</Text>
+        <EmptyState
+          icon="🏁"
+          title="本轮加练完成"
+          subtitle="10 个新词已经学完，接下来怎么安排？"
+        >
           <TouchableOpacity style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]} onPress={startExtraReview}>
-            <Text style={[styles.reviewStartText, { color: '#0D0D0D' }]}>开始巩固复习</Text>
+            <Text style={[styles.reviewStartText, { color: colors.onTint }]}>开始巩固复习</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.extraBtn, { borderColor: colors.tint }]} onPress={confirmExtraPractice}>
             <Text style={[styles.extraBtnText, { color: colors.tint }]}>再学习 10 个新词</Text>
@@ -908,7 +904,7 @@ export default function HomeScreen() {
           <TouchableOpacity onPress={() => { setExtraDecisionPending(false); extraWordIdsRef.current = new Set(); setExtraRemaining(null); extraRemainingRef.current = null; loadNext(); }}>
             <Text style={[styles.hint, { color: colors.subtitle }]}>暂时结束本轮</Text>
           </TouchableOpacity>
-        </View>
+        </EmptyState>
       )}
 
       {/* --- 正常学习模式 --- */}
@@ -924,25 +920,22 @@ export default function HomeScreen() {
       ) : !reviewPhase && !extraDecisionPending && !word ? (
         <ScrollView
           style={styles.emptyScroll}
-          contentContainerStyle={styles.emptyContainer}
+          contentContainerStyle={styles.emptyScrollContent}
         >
           {sessionIsComplete || (todayCountRef.current >= dailyGoalRef.current && dailyGoalRef.current > 0) ? (
-            <>
-              <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>🎯</Text>
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>
-                今日学习已完成
-              </Text>
-              <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
-                {sessionIsComplete
-                  ? `已完成 ${dailySession?.summary.completed ?? 0} 项学习${reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}`
-                  : `已完成 ${todayCountRef.current} 个新词${reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}`}
-              </Text>
+            <EmptyState
+              icon="🎯"
+              title="今日学习已完成"
+              subtitle={sessionIsComplete
+                ? `已完成 ${dailySession?.summary.completed ?? 0} 项学习${reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}`
+                : `已完成 ${todayCountRef.current} 个新词${reviewCompleted ? '，明天继续加油！' : '，来巩固一下吧！'}`}
+            >
               {!reviewCompleted && (
                 <TouchableOpacity
                   style={[styles.reviewStartBtn, { backgroundColor: colors.tint }]}
                   onPress={startReview}
                 >
-                  <Text style={[styles.reviewStartText, { color: '#0D0D0D' }]}>
+                  <Text style={[styles.reviewStartText, { color: colors.onTint }]}>
                     开始巩固测试
                   </Text>
                 </TouchableOpacity>
@@ -955,28 +948,24 @@ export default function HomeScreen() {
                   继续学习新词（+10）
                 </Text>
               </TouchableOpacity>
-            </>
+            </EmptyState>
           ) : (
-            <>
-              <Text style={[styles.emptyIcon, { color: colors.subtitle }]}>🎉</Text>
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>
-                All caught up!
-              </Text>
-              <Text style={[styles.emptySubtitle, { color: colors.subtitle }]}>
-                「{wordbook.name}」没有待复习的词了，明天再来看看～
-              </Text>
-            </>
+            <EmptyState
+              icon="🎉"
+              title="今日任务都完成啦"
+              subtitle={`「${wordbook.name}」没有待复习的词了，明天再来看看～`}
+            />
           )}
         </ScrollView>
       ) : !reviewPhase && !extraDecisionPending && word ? (
         <View style={styles.cardArea}>
           {extraRemaining != null && extraRemaining > 0 && (
-            <View style={styles.extraBadge}>
+            <View style={[styles.extraBadge, { backgroundColor: colors.info }]}>
               <Text style={styles.extraBadgeText}>加练中 · 剩余 {extraRemaining} 词</Text>
             </View>
           )}
           {isReview && (
-            <View style={styles.reviewBadge}>
+            <View style={[styles.reviewBadge, { backgroundColor: colors.warning }]}>
               <Text style={styles.reviewBadgeText}>复习</Text>
             </View>
           )}
@@ -1013,11 +1002,12 @@ export default function HomeScreen() {
             </View>
           ) : (
             <Text style={[styles.hint, { color: colors.pinyin }]}>
-              Tap the card to reveal
+              点击卡片查看释义
             </Text>
           )}
         </View>
       ) : null}
+      </View>
     </View>
   );
 }
@@ -1033,11 +1023,12 @@ function StatChip({
   label: string;
   color: string;
 }) {
+  const colors = useColors();
   return (
-    <View style={styles.chip}>
+    <View style={[styles.chip, { backgroundColor: colors.card }]}>
       <FontAwesome name={icon} size={14} color={color} />
-      <Text style={[styles.chipValue, { color: '#E8E0D4' }]}>{value}</Text>
-      <Text style={styles.chipLabel}>{label}</Text>
+      <Text style={[styles.chipValue, { color: colors.text }]}>{value}</Text>
+      <Text style={[styles.chipLabel, { color: colors.subtitle }]}>{label}</Text>
     </View>
   );
 }
@@ -1090,7 +1081,6 @@ const styles = StyleSheet.create({
   chip: {
     flex: 1,
     alignItems: 'center',
-    backgroundColor: '#1A1814',
     borderRadius: 12,
     paddingVertical: 10,
     marginHorizontal: 4,
@@ -1102,11 +1092,25 @@ const styles = StyleSheet.create({
   },
   chipLabel: {
     fontSize: 11,
-    color: '#9C9486',
     marginTop: 1,
   },
   emptyScroll: {
     flex: 1,
+  },
+  emptyScrollContent: {
+    flexGrow: 1,
+  },
+  // 桌面宽屏下内容居中限宽
+  contentCol: {
+    flex: 1,
+    width: '100%',
+    maxWidth: Layout.maxContentWidth,
+    alignSelf: 'center',
+  },
+  scoreLine: {
+    fontSize: 15,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   emptyContainer: {
     flex: 1,
@@ -1115,15 +1119,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingBottom: 60,
     paddingHorizontal: 20,
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 6,
   },
   emptySubtitle: {
     fontSize: 15,
@@ -1194,7 +1189,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   retryText: {
-    color: '#0D0D0D',
     fontSize: 17,
     fontWeight: '700',
   },
@@ -1270,7 +1264,6 @@ const styles = StyleSheet.create({
   },
   reviewBadge: {
     alignSelf: 'center',
-    backgroundColor: '#F5A623',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -1295,7 +1288,6 @@ const styles = StyleSheet.create({
   },
   extraBadge: {
     alignSelf: 'center',
-    backgroundColor: '#3B82F6',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 3,

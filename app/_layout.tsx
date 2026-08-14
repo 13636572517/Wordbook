@@ -1,9 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import {
-    DarkTheme,
-    DefaultTheme,
-    ThemeProvider,
-} from '@react-navigation/native';
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -12,7 +8,6 @@ import 'react-native-reanimated';
 
 import { SessionProvider } from '@/components/SessionProvider';
 import { WebAlertProvider } from '@/components/WebAlert';
-import { useColorScheme } from '@/components/useColorScheme';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -49,12 +44,9 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
+  // 产品锁定暗色主题，直接提供自定义暗色 Theme
   return (
-    <ThemeProvider
-      value={colorScheme === 'light' ? DefaultTheme : CustomDarkTheme}
-    >
+    <ThemeProvider value={CustomDarkTheme}>
       <SessionProvider>
         <WebAlertProvider>
         <Stack>

@@ -1,6 +1,7 @@
 import { useSession } from '@/components/SessionProvider';
 import { useWebAlert } from '@/components/WebAlert';
 import useColors from '@/components/useColors';
+import Layout from '@/constants/Layout';
 import type { Wordbook } from '@/lib/data';
 import { repo } from '@/lib/data';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -109,6 +110,8 @@ export default function LibraryScreen() {
         },
       ]}
       onPress={() => pick(wb)}
+      // 删除入口收进长按，避免卡片上直接暴露危险操作
+      onLongPress={wb.type === 'custom' ? () => remove(wb) : undefined}
       activeOpacity={0.7}
     >
       <View style={styles.cardMain}>
@@ -128,15 +131,6 @@ export default function LibraryScreen() {
             <FontAwesome name="check-circle-o" size={18} color={colors.tint} />
           </TouchableOpacity>
         )}
-        {wb.type === 'custom' && (
-          <TouchableOpacity
-            style={styles.delBtn}
-            onPress={() => remove(wb)}
-            activeOpacity={0.6}
-          >
-            <FontAwesome name="trash" size={16} color="#E5484D" />
-          </TouchableOpacity>
-        )}
         <FontAwesome name="chevron-right" size={13} color={colors.subtitle} />
       </View>
     </TouchableOpacity>
@@ -149,6 +143,7 @@ export default function LibraryScreen() {
         { backgroundColor: colors.background, paddingTop: insets.top },
       ]}
     >
+      <View style={styles.contentCol}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.text }]}>词本</Text>
       </View>
@@ -169,7 +164,12 @@ export default function LibraryScreen() {
               还没有自定义词本，点击下方按钮新建一个吧
             </Text>
           ) : (
-            customBooks.map(renderBook)
+            <>
+              {customBooks.map(renderBook)}
+              <Text style={[styles.longPressHint, { color: colors.pinyin }]}>
+                长按卡片可删除自定义词本
+              </Text>
+            </>
           )}
 
           {/* Create new wordbook (cloud mode: admin only) */}
@@ -222,6 +222,7 @@ export default function LibraryScreen() {
           ))}
         </ScrollView>
       )}
+      </View>
     </View>
   );
 }
@@ -229,6 +230,13 @@ export default function LibraryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  // 桌面宽屏下内容居中限宽
+  contentCol: {
+    flex: 1,
+    width: '100%',
+    maxWidth: Layout.maxContentWidth,
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -259,6 +267,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 8,
   },
+  longPressHint: {
+    fontSize: 12,
+    marginTop: 2,
+    marginBottom: 8,
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -277,9 +290,6 @@ const styles = StyleSheet.create({
   cardCount: {
     fontSize: 13,
     marginTop: 2,
-  },
-  delBtn: {
-    padding: 8,
   },
   cardActions: {
     flexDirection: 'row',

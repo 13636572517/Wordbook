@@ -12,7 +12,7 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme() ?? 'dark';
+  const colorScheme = useColorScheme();
   const colors = Colors[colorScheme];
 
   return (
@@ -20,12 +20,16 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.tint,
         tabBarInactiveTintColor: colors.tabIconDefault,
+        // 不设固定 height：由 React Navigation 自动纳入底部安全区，
+        // 避免带 Home 条的设备上被裁切
         tabBarStyle: {
-          backgroundColor: colors.card,
+          backgroundColor: colors.background,
           borderTopColor: colors.border,
-          borderTopWidth: 0.5,
-          height: 56,
-          paddingBottom: 6,
+          borderTopWidth: 1,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
         },
         headerShown: false,
       }}
@@ -52,17 +56,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="stats"
+        name="data"
         options={{
-          title: '统计',
+          title: '数据',
           tabBarIcon: ({ color }) => <TabBarIcon name="bar-chart" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="progress"
-        options={{
-          title: '进度',
-          tabBarIcon: ({ color }) => <TabBarIcon name="exclamation-circle" color={color} />,
         }}
       />
       <Tabs.Screen

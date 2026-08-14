@@ -2,6 +2,7 @@ import EnrichModal from '@/components/EnrichModal';
 import { useSession } from '@/components/SessionProvider';
 import { useWebAlert } from '@/components/WebAlert';
 import useColors from '@/components/useColors';
+import Layout from '@/constants/Layout';
 import type { Word } from '@/lib/data';
 import { repo } from '@/lib/data';
 import { lookupWord, type DictionaryResult } from '@/lib/dictionary';
@@ -10,13 +11,14 @@ import { speakWord } from '@/lib/speech';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFocusEffect } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
     Platform,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
@@ -40,6 +42,7 @@ export default function WordbookDetailScreen() {
   const webAlert = useWebAlert();
   const [words, setWords] = useState<Word[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
@@ -190,6 +193,17 @@ export default function WordbookDetailScreen() {
     (w) => w.definitions && w.definitions.length > 0,
   ).length;
 
+  // 搜索过滤：匹配单词或释义（6000 词纯内存过滤，无性能压力）
+  const filteredWords = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return words;
+    return words.filter(
+      (w) =>
+        w.word.toLowerCase().includes(q) ||
+        (w.translation ?? '').toLowerCase().includes(q),
+    );
+  }, [words, searchQuery]);
+
   const renderWord = ({ item }: { item: Word }) => {
     const isExpanded = expandedId === item.id;
     const isEnriching = enrichingId === item.id;
@@ -226,8 +240,8 @@ export default function WordbookDetailScreen() {
 
           <View style={styles.wordActions}>
             {hasEnrich && (
-              <View style={[styles.enrichedBadge, { backgroundColor: '#30A46C22' }]}>
-                <FontAwesome name="check" size={10} color="#30A46C" />
+              <View style={[styles.enrichedBadge, { backgroundColor: colors.success + '22' }]}>
+                <FontAwesome name="check" size={10} color={colors.success} />
               </View>
             )}
             <TouchableOpacity
@@ -262,7 +276,7 @@ export default function WordbookDetailScreen() {
                 onPress={() => deleteWord(item)}
                 activeOpacity={0.6}
               >
-                <FontAwesome name="trash" size={15} color="#E5484D" />
+                <FontAwesome name="trash" size={15} color={colors.danger} />
               </TouchableOpacity>
             )}
             <FontAwesome
@@ -393,7 +407,7 @@ export default function WordbookDetailScreen() {
                 onPress={() => { batchCancelRef.current = true; }}
                 activeOpacity={0.6}
               >
-                <Text style={[styles.batchCancel, { color: '#E5484D' }]}>停止</Text>
+                <Text style={[styles.batchCancel, { color: colors.danger }]}>停止</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -419,16 +433,42 @@ export default function WordbookDetailScreen() {
         />
       )}
 
+      {/* 搜索栏：大词本（6000 词）快速定位 */}
+      <View style={styles.searchWrap}>
+        <View style={[styles.searchBox, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+          <FontAwesome name="search" size={14} color={colors.subtitle} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="搜索单词或释义…"
+            placeholderTextColor={colors.pinyin}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
+              <FontAwesome name="times-circle" size={16} color={colors.subtitle} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       {/* Word list */}
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.tint} />
       ) : (
         <FlatList
-          data={words}
+          data={filteredWords}
           keyExtractor={(item) => item.id}
           renderItem={renderWord}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <Text style={[styles.searchEmpty, { color: colors.subtitle }]}>
+              没有匹配「{searchQuery}」的单词
+            </Text>
+          }
         />
       )}
     </View>
@@ -506,6 +546,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 40,
+    // 桌面宽屏下列表内容居中限宽
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  searchWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    padding: 0,
+  },
+  searchEmpty: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 32,
   },
   wordCard: {
     borderRadius: 14,

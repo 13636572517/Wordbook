@@ -168,9 +168,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const createUser = useCallback(async (name: string) => {
     const u = await repo.createUser(name.trim() || '我');
     await saveActiveUser(u.id);
+    await repo.setActiveUser(u.id);
     setUser(u);
     setUsers(await repo.listUsers());
-  }, []);
+    // 退出登录后 wordbooks/wordbook 已被清空，新建账户必须恢复词本列表
+    // 与默认活动词本，否则学习页因 !wordbook 永远转圈
+    const wbs = await reloadBooks();
+    const def = wbs.find((w) => w.type === 'system')?.id ?? wbs[0]?.id ?? null;
+    if (def) {
+      await saveActiveWordbook(def);
+      setWordbook(wbs.find((w) => w.id === def) ?? null);
+    }
+  }, [reloadBooks]);
 
   const createWordbook = useCallback(
     async (name: string) => {

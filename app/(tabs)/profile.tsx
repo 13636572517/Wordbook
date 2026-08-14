@@ -1,5 +1,6 @@
 import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
+import Layout from '@/constants/Layout';
 import { repo } from '@/lib/data';
 import { getWordbookStats } from '@/lib/data/stats';
 import { getDailySettings, setDailySettings } from '@/lib/data/settings';
@@ -142,6 +143,7 @@ export default function ProfileScreen() {
       <Text style={[styles.title, { color: colors.text }]}>我的</Text>
 
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.contentCol}>
         {/* User Card */}
         <TouchableOpacity
           style={[styles.userCard, { backgroundColor: colors.card }]}
@@ -184,21 +186,21 @@ export default function ProfileScreen() {
             icon="star"
             value={String(totalStats.mastered)}
             label="已掌握"
-            color="#30A46C"
+            color={colors.success}
             bg={colors.card}
           />
           <StatBox
             icon="clock-o"
             value={String(totalStats.due)}
             label="待复习"
-            color="#F5A623"
+            color={colors.warning}
             bg={colors.card}
           />
           <StatBox
             icon="fire"
             value={`${totalStats.streak}天`}
             label="连续学习"
-            color="#E5484D"
+            color={colors.danger}
             bg={colors.card}
           />
         </View>
@@ -341,11 +343,11 @@ export default function ProfileScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.ghostBtn, { borderColor: '#E05252' }]}
+                style={[styles.ghostBtn, { borderColor: colors.danger }]}
                 onPress={logout}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.ghostBtnText, { color: '#E05252' }]}>
+                <Text style={[styles.ghostBtnText, { color: colors.danger }]}>
                   退出登录
                 </Text>
               </TouchableOpacity>
@@ -356,12 +358,12 @@ export default function ProfileScreen() {
         {/* 云端模式：退出登录 / 切换账号 */}
         {USE_CLOUD && (
           <TouchableOpacity
-            style={[styles.logoutBtn, { borderColor: '#E05252' }]}
+            style={[styles.logoutBtn, { borderColor: colors.danger }]}
             onPress={logout}
             activeOpacity={0.7}
           >
-            <FontAwesome name="sign-out" size={16} color="#E05252" />
-            <Text style={styles.logoutText}>退出登录 / 切换账号</Text>
+            <FontAwesome name="sign-out" size={16} color={colors.danger} />
+            <Text style={[styles.logoutText, { color: colors.danger }]}>退出登录 / 切换账号</Text>
           </TouchableOpacity>
         )}
 
@@ -374,6 +376,7 @@ export default function ProfileScreen() {
             </Text>
           </View>
         )}
+        </View>
       </ScrollView>
 
       {/* User Switch/Create Modal（仅本地模式）*/}
@@ -479,11 +482,12 @@ function StatBox({
   color: string;
   bg: string;
 }) {
+  const colors = useColors();
   return (
     <View style={[styles.statBox, { backgroundColor: bg }]}>
       <FontAwesome name={icon} size={18} color={color} />
-      <Text style={[styles.statValue, { color: '#E8E0D4' }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: colors.subtitle }]}>{label}</Text>
     </View>
   );
 }
@@ -503,6 +507,12 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingBottom: 40,
+  },
+  // 桌面宽屏下内容居中限宽
+  contentCol: {
+    width: '100%',
+    maxWidth: Layout.maxContentWidth,
+    alignSelf: 'center',
   },
   userCard: {
     flexDirection: 'row',
@@ -562,7 +572,6 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: '#9C9486',
     marginTop: 2,
   },
   infoRow: {
@@ -681,7 +690,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   logoutText: {
-    color: '#E05252',
     fontSize: 16,
     fontWeight: '700',
   },
