@@ -42,6 +42,12 @@ export default function FlashCard({ word, language, onFlip }: Props) {
     onFlip?.(newFlipped);
   };
 
+  const handleFrontPress = () => {
+    // Web Speech / 音频回退必须由用户手势同步触发，避免浏览器拦截播放。
+    speakWord(word.word, language);
+    flipCard();
+  };
+
   const frontInterpolate = flipAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '180deg'],
@@ -76,7 +82,7 @@ export default function FlashCard({ word, language, onFlip }: Props) {
         {/* 正面：整卡点击翻面；翻面后禁用，避免与背面滚动冲突 */}
         <TouchableOpacity
           activeOpacity={0.95}
-          onPress={flipCard}
+          onPress={handleFrontPress}
           disabled={isFlipped}
           style={[styles.card, { pointerEvents: isFlipped ? 'none' : 'auto' }]}
         >

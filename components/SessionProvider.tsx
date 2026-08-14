@@ -22,6 +22,7 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
+    useWindowDimensions,
     View,
 } from 'react-native';
 import useColors from './useColors';
@@ -361,6 +362,8 @@ function CloudLoginScreen({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const colors = useColors();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 760;
 
   const handleLogin = async () => {
     if (!username.trim() || !password) return;
@@ -382,64 +385,72 @@ function CloudLoginScreen({
       style={[styles.authWrap, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.authInner}>
-        <Text style={[styles.authTitle, { color: colors.text }]}>登录</Text>
-        <Text style={[styles.authSub, { color: colors.subtitle }]}>
-          使用语算 GESP 账号登录，学习进度云端同步
-        </Text>
-        <TextInput
-          style={[
-            styles.authInput,
-            {
-              backgroundColor: colors.inputBackground,
-              borderColor: colors.border,
-              color: colors.text,
-            },
-          ]}
-          value={username}
-          onChangeText={setUsername}
-          placeholder="账号"
-          placeholderTextColor={colors.pinyin}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <TextInput
-          style={[
-            styles.authInput,
-            {
-              backgroundColor: colors.inputBackground,
-              borderColor: colors.border,
-              color: colors.text,
-            },
-          ]}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="密码"
-          placeholderTextColor={colors.pinyin}
-          secureTextEntry
-          onSubmitEditing={handleLogin}
-        />
-        {error || externalError ? (
-          <Text style={styles.loginError}>{error || externalError}</Text>
-        ) : null}
-        <TouchableOpacity
-          style={[
-            styles.authCreate,
-            {
-              backgroundColor: colors.tint,
-              opacity: username.trim() && password && !busy ? 1 : 0.4,
-            },
-          ]}
-          disabled={!username.trim() || !password || busy}
-          onPress={handleLogin}
-          activeOpacity={0.7}
-        >
-          {busy ? (
-            <ActivityIndicator size="small" color="#0D0D0D" />
-          ) : (
-            <Text style={styles.authCreateText}>登录</Text>
-          )}
-        </TouchableOpacity>
+      <View style={[styles.cloudLoginLayout, isDesktop && styles.cloudLoginLayoutDesktop]}>
+        {isDesktop && (
+          <View style={styles.cloudLoginBrand}>
+            <Text style={[styles.cloudLoginBrandTitle, { color: colors.text }]}>御算词擎</Text>
+            <Text style={[styles.cloudLoginBrandSub, { color: colors.subtitle }]}>把词汇学习做成每日可见的进步</Text>
+          </View>
+        )}
+        <View style={[styles.authInner, styles.cloudLoginPanel, { backgroundColor: isDesktop ? colors.card : 'transparent' }]}>
+          <Text style={[styles.authTitle, { color: colors.text }]}>登录</Text>
+          <Text style={[styles.authSub, { color: colors.subtitle }]}>
+            使用语算 GESP 账号登录，学习进度云端同步
+          </Text>
+          <TextInput
+            style={[
+              styles.authInput,
+              {
+                backgroundColor: colors.inputBackground,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            value={username}
+            onChangeText={setUsername}
+            placeholder="账号"
+            placeholderTextColor={colors.pinyin}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TextInput
+            style={[
+              styles.authInput,
+              {
+                backgroundColor: colors.inputBackground,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="密码"
+            placeholderTextColor={colors.pinyin}
+            secureTextEntry
+            onSubmitEditing={handleLogin}
+          />
+          {error || externalError ? (
+            <Text style={styles.loginError}>{error || externalError}</Text>
+          ) : null}
+          <TouchableOpacity
+            style={[
+              styles.authCreate,
+              {
+                backgroundColor: colors.tint,
+                opacity: username.trim() && password && !busy ? 1 : 0.4,
+              },
+            ]}
+            disabled={!username.trim() || !password || busy}
+            onPress={handleLogin}
+            activeOpacity={0.7}
+          >
+            {busy ? (
+              <ActivityIndicator size="small" color="#0D0D0D" />
+            ) : (
+              <Text style={styles.authCreateText}>登录</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -454,6 +465,17 @@ const styles = StyleSheet.create({
   },
   authWrap: { flex: 1 },
   authInner: { flex: 1, justifyContent: 'center', paddingHorizontal: 28 },
+  cloudLoginLayout: { flex: 1, width: '100%' },
+  cloudLoginLayoutDesktop: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    maxWidth: 980,
+    paddingHorizontal: 40,
+  },
+  cloudLoginBrand: { flex: 1, justifyContent: 'center', paddingRight: 64 },
+  cloudLoginBrandTitle: { fontSize: 44, fontWeight: '800', marginBottom: 12 },
+  cloudLoginBrandSub: { fontSize: 18, lineHeight: 28, maxWidth: 280 },
+  cloudLoginPanel: { width: '100%', maxWidth: 440 },
   authTitle: { fontSize: 28, fontWeight: '800', marginBottom: 6 },
   authSub: { fontSize: 14, marginBottom: 24 },
   authUser: {
