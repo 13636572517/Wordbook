@@ -412,6 +412,32 @@ def _phrase_key(word_id, phrase):
     return f"{word_id}:{phrase.strip().lower()}"
 
 
+def _pick_phrase(raw_phrases, wordbook_level):
+    """按词本 level 优先选择词组。
+
+    词条带 levels 时优先选包含当前词本 level 的词组（词组已按优先级排序，
+    第一个匹配项即为最优）；levels 缺失（历史数据）视为通用兜底，排在
+    明确匹配之后。无词组返回 None。
+    """
+    if not raw_phrases:
+        return None
+    fallback = None
+    for raw in raw_phrases:
+        if not isinstance(raw, dict):
+            continue
+        phrase = str(raw.get("phrase", "")).strip()
+        if not phrase:
+            continue
+        if fallback is None:
+            fallback = raw
+        levels = raw.get("levels")
+        if not levels:
+            continue
+        if wordbook_level and wordbook_level in levels:
+            return raw
+    return fallback
+
+
 def _session_item_data(item):
     return {
         "position": item.position,
@@ -634,20 +660,19 @@ class DailyStudySessionTodayView(APIView):
         for link in new_links:
             if len(scheduled_keys) >= phrase_limit:
                 break
-            for raw in link.word.phrases or []:
-                phrase = str(raw.get("phrase", "")).strip() if isinstance(raw, dict) else ""
-                if not phrase:
-                    continue
-                key = _phrase_key(link.word_id, phrase)
-                scheduled_keys.add(key)
-                rows.append({
-                    "kind": DailyStudySessionItem.Kind.PHRASE,
-                    "word": link.word,
-                    "phrase_key": key,
-                    "phrase": phrase,
-                    "meaning": str(raw.get("meaning", "")).strip(),
-                })
-                break
+            raw = _pick_phrase(link.word.phrases, session.wordbook.level)
+            if raw is None:
+                continue
+            phrase = str(raw.get("phrase", "")).strip()
+            key = _phrase_key(link.word_id, phrase)
+            scheduled_keys.add(key)
+            rows.append({
+                "kind": DailyStudySessionItem.Kind.PHRASE,
+                "word": link.word,
+                "phrase_key": key,
+                "phrase": phrase,
+                "meaning": str(raw.get("meaning", "")).strip(),
+            })
 
         if len(scheduled_keys) < phrase_limit:
             due_phrases = UserPhraseProgress.objects.filter(

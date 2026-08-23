@@ -7,6 +7,7 @@ import type { Word } from '@/lib/data';
 import { repo } from '@/lib/data';
 import { lookupWord, type DictionaryResult } from '@/lib/dictionary';
 import { getLanguageByCode } from '@/lib/languages';
+import { filterPhrasesByLevel } from '@/lib/quizgen';
 import { speakWord } from '@/lib/speech';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFocusEffect } from '@react-navigation/native';
@@ -39,6 +40,8 @@ export default function WordbookDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { isAdmin, user, wordbooks, refreshBooks } = useSession();
+  // 当前词本的 level：词组展示按词本分级过滤
+  const currentLevel = wordbooks.find((b) => b.id === id)?.level;
   const webAlert = useWebAlert();
   const [words, setWords] = useState<Word[]>([]);
   const [loading, setLoading] = useState(true);
@@ -321,7 +324,7 @@ export default function WordbookDetailScreen() {
             {item.phrases && item.phrases.length > 0 && (
               <View style={styles.exBlock}>
                 <Text style={[styles.exLabel, { color: colors.pinyin }]}>相关词</Text>
-                {item.phrases.map((p, i) => (
+                {filterPhrasesByLevel(item.phrases, currentLevel).map((p, i) => (
                   <Text key={i} style={[styles.exText, { color: colors.subtitle }]}>
                     • {p.phrase}{p.meaning ? ` (${p.meaning})` : ''}
                   </Text>

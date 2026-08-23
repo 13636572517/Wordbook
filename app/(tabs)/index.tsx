@@ -21,6 +21,7 @@ import type { WordbookStats } from '@/lib/data/stats';
 import { Grade } from '@/lib/sm2';
 import { consumePriorityId, getPriorityIds } from '@/lib/quizSelection';
 import { getLanguageByCode } from '@/lib/languages';
+import { filterPhrasesByLevel } from '@/lib/quizgen';
 import { useSession } from '@/components/SessionProvider';
 import FlashCard from '@/components/FlashCard';
 import { speakWord } from '@/lib/speech';
@@ -325,10 +326,12 @@ export default function HomeScreen() {
       }
       if (isNew && grade >= 1 && isCloud) {
         const full = word.phrases?.length ? word : await fetchWordDetail(word.id);
-        const cards = (full.phrases ?? []).slice(0, 2).map((item) => ({
-          wordId: word.id, phraseKey: `${word.id}:${item.phrase.trim().toLowerCase()}`,
-          phrase: item.phrase, meaning: item.meaning,
-        }));
+        const cards = filterPhrasesByLevel(full.phrases, wordbook?.level)
+          .slice(0, 2)
+          .map((item) => ({
+            wordId: word.id, phraseKey: `${word.id}:${item.phrase.trim().toLowerCase()}`,
+            phrase: item.phrase, meaning: item.meaning,
+          }));
         if (cards.length > 0) {
           if (inExtra) {
             // 加练模式：延迟词组，等全部新词学完后统一展示

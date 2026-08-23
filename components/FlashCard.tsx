@@ -1,6 +1,8 @@
 import type { Word } from '@/lib/data';
 import { LanguageConfig } from '@/lib/languages';
+import { filterPhrasesByLevel } from '@/lib/quizgen';
 import { speakWord } from '@/lib/speech';
+import { useSession } from './SessionProvider';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import React, { useRef, useState } from 'react';
 import {
@@ -25,6 +27,9 @@ export default function FlashCard({ word, language, onFlip }: Props) {
   const [isFlipped, setIsFlipped] = useState(false);
   const flipAnim = useRef(new Animated.Value(0)).current;
   const colors = useColors();
+  const { wordbook } = useSession();
+  // 词组按当前词本 level 过滤展示（无分级数据时展示全部）
+  const visiblePhrases = filterPhrasesByLevel(word.phrases, wordbook?.level);
   const { height: winHeight } = useWindowDimensions();
   // 卡片高度随屏幕自适应，小屏不被评分按钮挤压
   const cardHeight = Math.min(340, Math.round(winHeight * 0.45));
@@ -171,12 +176,12 @@ export default function FlashCard({ word, language, onFlip }: Props) {
             )}
 
             {/* Phrases / Collocations */}
-            {word.phrases && word.phrases.length > 0 && (
+            {visiblePhrases.length > 0 && (
               <View style={styles.phrasesBlock}>
                 <Text style={[styles.sectionLabel, { color: colors.pinyin }]}>
                   相关词组
                 </Text>
-                {word.phrases.map((p, i) => (
+                {visiblePhrases.map((p, i) => (
                   <Text key={i} style={[styles.phraseText, { color: colors.subtitle }]}>
                     {p.phrase}
                     {p.meaning ? ` — ${p.meaning}` : ''}

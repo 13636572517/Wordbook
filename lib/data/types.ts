@@ -27,6 +27,8 @@ export interface WordExample {
 export interface WordPhrase {
   phrase: string;
   meaning: string;
+  /** 适配的词本 level 列表（与 Wordbook.level 一致）；缺失视为通用 */
+  levels?: string[];
 }
 
 export interface WordDefinition {
