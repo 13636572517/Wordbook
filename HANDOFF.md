@@ -888,3 +888,42 @@ P1 信息架构重叠（统计 vs 进度）/反馈弱/布局不对称；P2 缺�
 旧 /stats、/progress 已移除。Browser 实机验证：线上登录界面完整（账号/密码/登录按钮），
 暗色主题渲染正常，console 仅 1 条未登录时的预期 401（/api/me/）。
 登录后 5 Tab 与数据页四子 Tab 的人工验证由用户在真实账号上完成。
+
+## 36. 功能（2026-08-23）：词组清洗分级 + 每日队列按词本匹配（`01d6057`，已部署）
+
+**背景**：词组欠账持续增长（261→321）的根因是「队列饥饿」——`_build_items` 的 10 个词组槽位
+总被新词的 `phrases[0]` 填满，到期词组复习永远排不上；且词组是词级全局数据（有道 `phrs[:8]`，
+3926 词在高中/四级/六级间共享），无词本分级，含大量噪音（如 "ip address"、"strike slip"）。
+本次两个动作：清洗+分级标注数据，并按词本 level 取词/展示。
+
+**动作 1：清洗 + 分级**（`backend/apps/vocab/management/commands/reorganize_phrases.py`）：
+- 去噪规则：空/拼接标记（"…之"等）/技术领域标记（[计][地理学]…）/数字/全大写缩写 token/词数<2或>5。
+- 精选排序：`CURATED` 字典（约 30 个高频动词的考试核心短语）+ 评分（curated 命中+3、含目标词+2、
+  词数≤3 +1、动词开头+1），每词保留前 4 条。
+- 分级：levels 继承自词本关联（`wordbook_words` join `wordbooks` 的 level），CURATED 命中时覆盖；
+  幂等（二次运行无变化），写前自动备份到 `BASE_DIR/phrase_backup_<ts>.json`。
+- `--clean-progress`：删除清洗后已不存在的孤儿词组进度/会话项（键 `word_id:phrase.lower()` 重建比对）。
+
+**动作 2：取词与展示按 level**：
+- 后端 `views._pick_phrase`：词组槽位按词本 level 优先匹配（词组已排序，首个匹配即最优），
+  levels 缺失的旧数据作兜底。
+- 前端 `lib/quizgen.ts` 新增 `filterPhrasesByLevel`（level 匹配→无 levels 旧数据兜底→原样），
+  贯通 FlashCard、QuizRunner（词组选择题/填空）、首页新词词组卡、数据页词组详情、词本详情页。
+- 类型：`WordPhrase` 增 `levels?: string[]`，`httpRepo.sanitizePhrases` 保留该字段。
+
+**部署（2026-08-23 完成）**：
+- 前端：worktree 本地 `expo export`（云端模式）+ `pwa-postbuild` → SFTP 上传
+  `/opt/learning/frontend/dist`（bundle `entry-7fcdb96b...js`，nginx 本地 200）。
+  `scripts/deploy_frontend.py` 支持 `WORDHOARD_LOCAL_DIST` 环境变量覆盖 dist 路径（worktree 场景）。
+- 后端：服务器 git fetch + merge origin/main（fast-forward 至 `01d6057`）+ migrate（顺带应用了
+  0008/0009）+ `sudo systemctl restart learning`（admin 无直接 systemctl 权限，脚本内 restart 步骤
+  会失败，需用 sudo 补重启——已做）。
+- 数据清洗（prod 库）：`DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/bin/python manage.py
+  reorganize_phrases --clean-progress` → 扫描 7554 词，整理 5260 词，丢弃 1005 条噪音，保留 16853 条；
+  清理孤儿进度 113 条、会话项 85 条；备份 `/opt/learning/backend/phrase_backup_20260823_104557.json`。
+- 验证：MySQL 抽查 `address`（"ip address" 已剔除，4 条通用搭配均带 levels）、`take`
+  （take part in→high-school、take on→cet4/cet6）。
+
+**注意**：生产库表无前缀（`words`/`user_phrase_progress`/`daily_study_session_items`）；
+服务器 manage.py 默认连 SQLite 空库，任何数据操作必须显式指定 `DJANGO_SETTINGS_MODULE=config.settings.prod`；
+worktree 构建需软链主工作区的 `node_modules`、`lib/data/dictCache.json`、`server-credentials.json`（均 gitignore）。
