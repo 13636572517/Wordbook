@@ -927,3 +927,32 @@ P1 信息架构重叠（统计 vs 进度）/反馈弱/布局不对称；P2 缺�
 **注意**：生产库表无前缀（`words`/`user_phrase_progress`/`daily_study_session_items`）；
 服务器 manage.py 默认连 SQLite 空库，任何数据操作必须显式指定 `DJANGO_SETTINGS_MODULE=config.settings.prod`；
 worktree 构建需软链主工作区的 `node_modules`、`lib/data/dictCache.json`、`server-credentials.json`（均 gitignore）。
+
+## 37. 数据补充（2026-08-23）：无词组词批量补充（教材+有道+海词三级源）
+
+**背景**：清洗后全库 7554 词中仍有 2336 词无词组（六级缺 1283、四级 1097、高中 848、
+初中 417），覆盖率仅 67.8%-79%。这些词（earn、persuade、postpone 等实词）很多有常见搭配，
+是当时有道 jsonapi_s 的 phrs 字段未返回导致的欠账。
+
+**方案**：新增两个本地脚本（不入库数据，仅工具）：
+- `scripts/backfill_phrases.py`：三级数据源顺序补充——①教材 JSONL
+  （主工作区 `data/PEPGaoZhong_*.json` 的 `content.word.content.phrase.phrases`，
+  2164 词自带教材词组，仅用于高中词本）；②有道网页版词组短语板块
+  （`dict.youdao.com/w/<word>/` 的 `#wordGroup`）；③海词词汇搭配板块
+  （`dict.cn/<word>` 的「词汇搭配」区）。清洗规则复用 §36 口径
+  （2-5 词、无全大写缩写、去词性前缀），在线词组强制含目标词防错词污染，
+  每词保留前 4 条并打词所在词本 levels。断点续跑（patch.json + web_failed.json）。
+- `scripts/apply_phrase_patch.py`：上传 patch.json 到服务器，用 Django ORM
+  幂等写回（仅对仍无词组的词），需 `sys.path.insert(0, "/opt/learning/backend")`。
+
+**执行结果**：教材 119 词 + 在线 1553 词，共补充 1721 词、5416 条词组（603 词双源均无，
+多为虚词/派生词/专名，属正常）。写库 updated=1721 skipped=0。
+
+**补充后覆盖率**（有词组词/总词数）：高中 3582/3743（77.3%→**95.7%**）、
+四级 4327/4543（75.9%→**95.2%**）、六级 3684/3991（67.8%→**92.3%**）、
+初中 1931/1987（79.0%→**97.2%**）、默写错误词汇 9/10。全库无词组词 2336→615，
+词组总条数 16853→22269，无 levels 词组仍为 0。
+
+**教训**：有道 jsonapi_s 的 phrs 字段对大量词返回空且 CDN 串词严重（本地也会
+「查 earn 返回 abvolt」），网页版 `#wordGroup` 板块才是更可靠的词组来源；
+有道会限流（速度从 1.1 掉到 0.37 词/s），脚本需断点续跑 + 6s 短超时 + 0.25-0.5s 间隔。

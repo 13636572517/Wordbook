@@ -2,6 +2,7 @@
 
 # dependencies
 node_modules/
+node_modules
 
 # Expo
 .expo/
@@ -51,6 +52,9 @@ server-credentials.json
 # dict cache progress (intermediate file)
 lib/data/dictCache.json
 scripts/__pycache__/
+# 词组补丁中间数据（本地生成，不入库）
+scripts/.phrase_backfill/
+scripts/.tmpvenv/
 
 # production server runtime files
 .env
