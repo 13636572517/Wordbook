@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-09-01（§38 每日复习限量 2×新词 + 新词优先队列 + 设置页复习欠账智能建议，待 09-02 部署）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-09-02（§38 每日复习限量 2×新词 + 新词优先队列 + 设置页复习欠账智能建议，已部署）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -36,7 +36,7 @@
 
 ### 最近提交（main，新→旧）
 ```
-5ac78ff feat: 每日复习限量(2×新词)+新词优先队列+设置页智能建议（待 2026-09-02 部署）
+5ac78ff feat: 每日复习限量(2×新词)+新词优先队列+设置页智能建议（已部署 09-02）
 8ed0bb1 feat: 词组补充脚本（教材+有道+海词三级源）与 HANDOFF §37
 aca6c71 feat: UI全面优化——锁定暗色主题+语义色收敛、统计/进度合并为数据Tab、FlashCard手势修复、答题反馈增强、桌面限宽与词本搜索
 c0bb2f1 feat: 学员统计页升级为概览/薄弱词/错题三Tab，错题口径与教师端同源
@@ -959,7 +959,7 @@ worktree 构建需软链主工作区的 `node_modules`、`lib/data/dictCache.jso
 「查 earn 返回 abvolt」），网页版 `#wordGroup` 板块才是更可靠的词组来源；
 有道会限流（速度从 1.1 掉到 0.37 词/s），脚本需断点续跑 + 6s 短超时 + 0.25-0.5s 间隔。
 
-## 38. 功能（2026-09-01）：每日复习限量 + 新词优先队列 + 设置页智能建议（`5ac78ff`，待 09-02 部署）
+## 38. 功能（2026-09-01）：每日复习限量 + 新词优先队列 + 设置页智能建议（`5ac78ff`，已部署）
 
 **起因**：学员 zhangshanzhi（user_id=42）反馈“每日新词改为 50 未生效”（实为生效，但旧逻辑把 282 个到期复习排在 50 个新词前面，学员看到的是 342 项队列）；进一步分析发现 SM-2 下复习量是新词量的数倍（100 新词/天 → 稳态 100~300+ 复习/天），学员大量时间耗在复习上。当晚实测：学员 25 分钟刷完 282 复习 + 50 新词 + 10 词组，复习占时超 80%。
 
@@ -976,3 +976,11 @@ worktree 构建需软链主工作区的 `node_modules`、`lib/data/dictCache.jso
 **验证**：本地 `manage.py test apps.vocab` 21/23 通过（2 个失败为本地缺 gesp_trainer 跨库表的既有环境问题）；`tsc --noEmit` 0 错误；`lib/data/__tests__/settings.test.ts` 通过。
 
 **部署计划（2026-09-02）**：先部署后端（migrate 0010 + 重启 learning），再 `bash /opt/learning/deploy.sh` 部署前端。队列新逻辑只对“部署后新建的当日会话”生效；学员 42 今日已建的 342 项队列不动（用户明确要求，且当晚已全部完成），明日起自动按新逻辑生成。上线后验证：学员 42 明日会话应为 新词 50 + 复习≤100 + 词组，首页显示顺延提示，设置页出现建议横幅。
+
+
+**部署（2026-09-02 05:56 完成）**：
+- 时机：全平台最近 30 分钟无学习活动、学员 42 今日会话未创建（部署后其首次打开即按新逻辑建队列）。
+- 后端：服务器 git fast-forward `8c5a740→ef80c5e` + `DJANGO_SETTINGS_MODULE=config.settings.prod migrate`（应用 0010）+ `sudo systemctl restart learning`（active）。
+- 前端：`bash /opt/learning/deploy.sh`，bundle 4,185,241 bytes、GESP=2、loginError=2、静态路由 18 条；新标识符 reviewDeferred/reviewBacklog/recommendedDailyNewWordGoal 均在 bundle（×2）。
+- 接口验证：GET /api/settings/（user 42）返回 `review_backlog=4, recommended_daily_new_word_goal=50`（学员前夜已清完欠账，今日无需降量，横幅不显示属预期）。
+- 队列逻辑生产实测（事务回滚、零残留）：造 45 个到期词 + 目标 20 → 队列 = 新词 20（position 0-19，最前）+ 复习 40（上限 2×20）+ 词组 10，`review_deferred=5`。全部符合预期。
