@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-08-14（UI 全面优化：锁定暗色主题 + 语义色收敛、统计/进度合并为「数据」Tab、FlashCard 手势修复、答题反馈增强、桌面限宽与词本搜索）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-09-01（每日复习限量 2×新词 + 新词优先队列 + 设置页复习欠账智能建议，待 09-02 部署）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -36,6 +36,7 @@
 
 ### 最近提交（main，新→旧）
 ```
+5ac78ff feat: 每日复习限量(2×新词)+新词优先队列+设置页智能建议（待 2026-09-02 部署）
 aca6c71 feat: UI全面优化——锁定暗色主题+语义色收敛、统计/进度合并为数据Tab、FlashCard手势修复、答题反馈增强、桌面限宽与词本搜索
 c0bb2f1 feat: 学员统计页升级为概览/薄弱词/错题三Tab，错题口径与教师端同源
 f24bcec fix: 打卡PC单行布局；学员详情缺省选中最后学习词本；修复全部词本A-Z假100%
@@ -888,3 +889,20 @@ P1 信息架构重叠（统计 vs 进度）/反馈弱/布局不对称；P2 缺�
 旧 /stats、/progress 已移除。Browser 实机验证：线上登录界面完整（账号/密码/登录按钮），
 暗色主题渲染正常，console 仅 1 条未登录时的预期 401（/api/me/）。
 登录后 5 Tab 与数据页四子 Tab 的人工验证由用户在真实账号上完成。
+
+## 36. 功能（2026-09-01）：每日复习限量 + 新词优先队列 + 设置页智能建议（`5ac78ff`，待 09-02 部署）
+
+**起因**：学员 zhangshanzhi（user_id=42）反馈“每日新词改为 50 未生效”（实为生效，但旧逻辑把 282 个到期复习排在 50 个新词前面，学员看到的是 342 项队列）；进一步分析发现 SM-2 下复习量是新词量的数倍（100 新词/天 → 稳态 100~300+ 复习/天），学员大量时间耗在复习上。
+
+**改动（方案C：限流+引导）**：
+1. **复习限量**：`_build_items` 中每日复习只纳入最久欠账的 `REVIEW_CAP_RATIO(=2) × 每日新词目标` 个，超出顺延次日（到期时间不变，次日优先入队）。新增 `DailyStudySession.review_deferred` 字段记录顺延数（迁移 0010），会话 summary 返回 `review_deferred`。
+2. **新词优先**：队列顺序改为 新词 → 复习词 → 词组（原为复习优先），学员打开学习页直接看到当日新词，消除“设置未生效”误判。新词仍按字母升序。
+3. **智能建议**：`GET /api/settings/` 新增 `review_backlog`（全局到期复习欠账）与 `recommended_daily_new_word_goal`（欠账≥200→20；≥100→30；≥50→40；否则 50）。设置页在欠账>0 且建议值低于当前目标时展示橙色建议横幅，可一键采纳。
+4. **顺延提示**：首页进度条（MarqueeBar）在 `review_deferred > 0` 时显示“超出上限的 N 个复习已顺延至明天”。
+5. 新增只读诊断脚本 `scripts/diag_daily_goal.py`（SSH 查生产学员设置/会话/欠账）。
+
+**涉及文件**：`backend/apps/vocab/views.py`（_build_items、_session_data、UserSettingsView.get、REVIEW_CAP_RATIO、_recommend_new_word_goal）、`models.py` + 迁移 `0010`、`tests.py`（队列顺序/复习上限/建议字段用例）；前端 `lib/data/settings.ts`、`lib/data/httpRepo.ts`、`app/(tabs)/profile.tsx`、`app/(tabs)/index.tsx`、`components/MarqueeBar.tsx`。
+
+**验证**：本地 `manage.py test apps.vocab` 21/23 通过（2 个失败为本地缺 gesp_trainer 跨库表的既有环境问题）；`tsc --noEmit` 0 错误；`lib/data/__tests__/settings.test.ts` 通过。
+
+**部署计划（2026-09-02）**：先部署后端（migrate 0010 + 重启 learning），再 `bash /opt/learning/deploy.sh` 部署前端。队列新逻辑只对“部署后新建的当日会话”生效；学员 42 今日已建的 342 项队列不动（用户明确要求），明日起自动按新逻辑生成。上线后验证：学员 42 明日会话应为 新词 50 + 复习≤100 + 词组，首页显示顺延提示，设置页出现建议横幅（当前欠账约 122 → 建议 30）。
