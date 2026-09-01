@@ -4,7 +4,10 @@ import sys
 import paramiko
 from scripts.ssh_client import load_creds
 
-LOCAL_DIST = "/Users/michael/WorkBuddy/高中学习工具/wordhoard/dist"
+# 默认主工作区 dist；可通过环境变量 WORDHOARD_LOCAL_DIST 覆盖（worktree 构建场景）
+LOCAL_DIST = os.environ.get(
+    "WORDHOARD_LOCAL_DIST", "/Users/michael/WorkBuddy/高中学习工具/wordhoard/dist"
+)
 REMOTE_DIST = "/opt/learning/frontend/dist"
 
 

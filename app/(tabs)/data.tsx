@@ -39,6 +39,7 @@ import { getTodayCounts, type TodayCounts } from '@/lib/todayCounts';
 import { buildAdvice, type AdviceItem } from '@/lib/progressAdvice';
 import { speakWord } from '@/lib/speech';
 import { getLanguageByCode } from '@/lib/languages';
+import { filterPhrasesByLevel } from '@/lib/quizgen';
 import FlashCard from '@/components/FlashCard';
 import QuizRunner from '@/components/QuizRunner';
 import { useSession } from '@/components/SessionProvider';
@@ -454,7 +455,7 @@ export default function DataScreen() {
                                 {w.phrases && w.phrases.length > 0 && (
                                   <View style={styles.detailSection}>
                                     <Text style={[styles.detailLabel, { color: colors.tint }]}>词组</Text>
-                                    {w.phrases.map((ph: WordPhrase, i: number) => (
+                                    {filterPhrasesByLevel(w.phrases, wordbook?.level).map((ph: WordPhrase, i: number) => (
                                       <Text key={i} style={[styles.detailText, { color: colors.text }]}>
                                         {ph.phrase}{ph.meaning ? `  ${ph.meaning}` : ''}
                                       </Text>

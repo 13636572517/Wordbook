@@ -160,8 +160,8 @@ export default function QuizRunner({
           if (!w) continue;
           if (item.type === 'dictation') pool.push(genDictation([w]));
           else if (item.type === 'choice') pool.push(genChoice(quizWords, w));
-          else if (item.type === 'phrase-blank') {
-            const q = genPhraseBlank(w);
+                    else if (item.type === 'phrase-blank') {
+            const q = genPhraseBlank(w, wordbook?.level);
             if (q) pool.push(q);
           } else {
             const q = genSentenceChoiceAll(w, distractorPool)[0];
@@ -175,10 +175,10 @@ export default function QuizRunner({
           } else if (t === 'choice') {
             pool.push(genChoice(quizWords, w));
           } else if (t === 'phrase') {
-            const q = genPhrase(w);
+            const q = genPhrase(w, wordbook?.level);
             if (q) pool.push(q);
           } else if (t === 'phrase-blank') {
-            const q = genPhraseBlank(w);
+            const q = genPhraseBlank(w, wordbook?.level);
             if (q) pool.push(q);
           } else if (t === 'sentence-choice') {
             const qs = genSentenceChoiceAll(w, distractorPool);

@@ -201,7 +201,10 @@ function sanitizePhrases(raw: any): WordPhrase[] | undefined {
     if (!p || typeof p !== 'object') continue;
     const phrase = toStr2(p.phrase);
     if (!phrase) continue;
-    out.push({ phrase, meaning: toStr2(p.meaning) });
+    const levels = Array.isArray(p.levels)
+      ? p.levels.filter((l: unknown) => typeof l === 'string')
+      : undefined;
+    out.push({ phrase, meaning: toStr2(p.meaning), ...(levels && levels.length > 0 ? { levels } : {}) });
   }
   return out.length > 0 ? out : undefined;
 }

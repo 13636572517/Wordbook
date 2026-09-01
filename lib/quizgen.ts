@@ -1,5 +1,5 @@
 import type { Repository } from './data/repo';
-import type { Word } from './data/types';
+import type { Word, WordPhrase } from './data/types';
 import { getWeakWordIds } from './data/weak';
 import { getRecentWords, getStudiedWords } from './data/review-scope';
 
@@ -56,6 +56,23 @@ function fisherYates<T>(arr: T[]): T[] {
 }
 
 /**
+ * 按词本 level 过滤词组：优先带 levels 且匹配的词条；
+ * 无匹配但有未分级历史数据时用历史数据；否则原样返回。
+ */
+export function filterPhrasesByLevel(
+  phrases: WordPhrase[] | undefined,
+  level?: string,
+): WordPhrase[] {
+  if (!phrases || phrases.length === 0) return [];
+  if (!level || level === 'custom') return phrases;
+  const matched = phrases.filter((p) => p.levels && p.levels.includes(level));
+  if (matched.length > 0) return matched;
+  const legacy = phrases.filter((p) => !p.levels || p.levels.length === 0);
+  if (legacy.length > 0) return legacy;
+  return phrases;
+}
+
+/**
  * 单词默写：看 translation 写 word。从给定词池随机取一词做题干，
  * answer = 该词的 word 文本。比对（忽略大小写/空格）交给 UI。
  */
@@ -85,13 +102,13 @@ export function genChoice(allWords: Word[], target: Word): ChoiceQuiz {
 }
 
 /**
- * 词组默写：取 word.phrases 的第一个词组，看 meaning 写整组 phrase。
+ * 词组默写：取按词本 level 过滤后的第一个词组，看 meaning 写整组 phrase。
  * hints = phrase 按空格拆分后每个词的长度（如 "break the ice" -> [5,3,3]）。
- * word.phrases 为空或 null 时返回 null（UI 降级提示"该词无词组"）。
+ * 无可用词组时返回 null（UI 降级提示"该词无词组"）。
  */
-export function genPhrase(word: Word): PhraseQuiz | null {
-  const phrases = word.phrases;
-  if (!phrases || phrases.length === 0) return null;
+export function genPhrase(word: Word, level?: string): PhraseQuiz | null {
+  const phrases = filterPhrasesByLevel(word.phrases, level);
+  if (phrases.length === 0) return null;
   const p = phrases[0];
   const hints = p.phrase.split(' ').map((s) => s.length);
   return { type: 'phrase', word, meaning: p.meaning, answer: p.phrase, hints };
@@ -99,12 +116,12 @@ export function genPhrase(word: Word): PhraseQuiz | null {
 
 /**
  * 词组填空：在词组语境中填写目标词（逐字母输入）。
- * 找包含 word.word 的词组，将目标词替换为 ___。
+ * 找包含 word.word 的词组（按词本 level 过滤后），将目标词替换为 ___。
  * 找不到则返回 null。
  */
-export function genPhraseBlank(word: Word): PhraseBlankQuiz | null {
-  const phrases = word.phrases;
-  if (!phrases || phrases.length === 0) return null;
+export function genPhraseBlank(word: Word, level?: string): PhraseBlankQuiz | null {
+  const phrases = filterPhrasesByLevel(word.phrases, level);
+  if (phrases.length === 0) return null;
   const target = word.word.toLowerCase();
   for (const p of phrases) {
     const phraseLower = p.phrase.toLowerCase();

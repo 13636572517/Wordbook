@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-09-01（每日复习限量 2×新词 + 新词优先队列 + 设置页复习欠账智能建议，待 09-02 部署）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-09-01（§38 每日复习限量 2×新词 + 新词优先队列 + 设置页复习欠账智能建议，待 09-02 部署）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -37,6 +37,7 @@
 ### 最近提交（main，新→旧）
 ```
 5ac78ff feat: 每日复习限量(2×新词)+新词优先队列+设置页智能建议（待 2026-09-02 部署）
+8ed0bb1 feat: 词组补充脚本（教材+有道+海词三级源）与 HANDOFF §37
 aca6c71 feat: UI全面优化——锁定暗色主题+语义色收敛、统计/进度合并为数据Tab、FlashCard手势修复、答题反馈增强、桌面限宽与词本搜索
 c0bb2f1 feat: 学员统计页升级为概览/薄弱词/错题三Tab，错题口径与教师端同源
 f24bcec fix: 打卡PC单行布局；学员详情缺省选中最后学习词本；修复全部词本A-Z假100%
@@ -890,9 +891,77 @@ P1 信息架构重叠（统计 vs 进度）/反馈弱/布局不对称；P2 缺�
 暗色主题渲染正常，console 仅 1 条未登录时的预期 401（/api/me/）。
 登录后 5 Tab 与数据页四子 Tab 的人工验证由用户在真实账号上完成。
 
-## 36. 功能（2026-09-01）：每日复习限量 + 新词优先队列 + 设置页智能建议（`5ac78ff`，待 09-02 部署）
+## 36. 功能（2026-08-23）：词组清洗分级 + 每日队列按词本匹配（`01d6057`，已部署）
 
-**起因**：学员 zhangshanzhi（user_id=42）反馈“每日新词改为 50 未生效”（实为生效，但旧逻辑把 282 个到期复习排在 50 个新词前面，学员看到的是 342 项队列）；进一步分析发现 SM-2 下复习量是新词量的数倍（100 新词/天 → 稳态 100~300+ 复习/天），学员大量时间耗在复习上。
+**背景**：词组欠账持续增长（261→321）的根因是「队列饥饿」——`_build_items` 的 10 个词组槽位
+总被新词的 `phrases[0]` 填满，到期词组复习永远排不上；且词组是词级全局数据（有道 `phrs[:8]`，
+3926 词在高中/四级/六级间共享），无词本分级，含大量噪音（如 "ip address"、"strike slip"）。
+本次两个动作：清洗+分级标注数据，并按词本 level 取词/展示。
+
+**动作 1：清洗 + 分级**（`backend/apps/vocab/management/commands/reorganize_phrases.py`）：
+- 去噪规则：空/拼接标记（"…之"等）/技术领域标记（[计][地理学]…）/数字/全大写缩写 token/词数<2或>5。
+- 精选排序：`CURATED` 字典（约 30 个高频动词的考试核心短语）+ 评分（curated 命中+3、含目标词+2、
+  词数≤3 +1、动词开头+1），每词保留前 4 条。
+- 分级：levels 继承自词本关联（`wordbook_words` join `wordbooks` 的 level），CURATED 命中时覆盖；
+  幂等（二次运行无变化），写前自动备份到 `BASE_DIR/phrase_backup_<ts>.json`。
+- `--clean-progress`：删除清洗后已不存在的孤儿词组进度/会话项（键 `word_id:phrase.lower()` 重建比对）。
+
+**动作 2：取词与展示按 level**：
+- 后端 `views._pick_phrase`：词组槽位按词本 level 优先匹配（词组已排序，首个匹配即最优），
+  levels 缺失的旧数据作兜底。
+- 前端 `lib/quizgen.ts` 新增 `filterPhrasesByLevel`（level 匹配→无 levels 旧数据兜底→原样），
+  贯通 FlashCard、QuizRunner（词组选择题/填空）、首页新词词组卡、数据页词组详情、词本详情页。
+- 类型：`WordPhrase` 增 `levels?: string[]`，`httpRepo.sanitizePhrases` 保留该字段。
+
+**部署（2026-08-23 完成）**：
+- 前端：worktree 本地 `expo export`（云端模式）+ `pwa-postbuild` → SFTP 上传
+  `/opt/learning/frontend/dist`（bundle `entry-7fcdb96b...js`，nginx 本地 200）。
+  `scripts/deploy_frontend.py` 支持 `WORDHOARD_LOCAL_DIST` 环境变量覆盖 dist 路径（worktree 场景）。
+- 后端：服务器 git fetch + merge origin/main（fast-forward 至 `01d6057`）+ migrate（顺带应用了
+  0008/0009）+ `sudo systemctl restart learning`（admin 无直接 systemctl 权限，脚本内 restart 步骤
+  会失败，需用 sudo 补重启——已做）。
+- 数据清洗（prod 库）：`DJANGO_SETTINGS_MODULE=config.settings.prod ./venv/bin/python manage.py
+  reorganize_phrases --clean-progress` → 扫描 7554 词，整理 5260 词，丢弃 1005 条噪音，保留 16853 条；
+  清理孤儿进度 113 条、会话项 85 条；备份 `/opt/learning/backend/phrase_backup_20260823_104557.json`。
+- 验证：MySQL 抽查 `address`（"ip address" 已剔除，4 条通用搭配均带 levels）、`take`
+  （take part in→high-school、take on→cet4/cet6）。
+
+**注意**：生产库表无前缀（`words`/`user_phrase_progress`/`daily_study_session_items`）；
+服务器 manage.py 默认连 SQLite 空库，任何数据操作必须显式指定 `DJANGO_SETTINGS_MODULE=config.settings.prod`；
+worktree 构建需软链主工作区的 `node_modules`、`lib/data/dictCache.json`、`server-credentials.json`（均 gitignore）。
+
+## 37. 数据补充（2026-08-23）：无词组词批量补充（教材+有道+海词三级源）
+
+**背景**：清洗后全库 7554 词中仍有 2336 词无词组（六级缺 1283、四级 1097、高中 848、
+初中 417），覆盖率仅 67.8%-79%。这些词（earn、persuade、postpone 等实词）很多有常见搭配，
+是当时有道 jsonapi_s 的 phrs 字段未返回导致的欠账。
+
+**方案**：新增两个本地脚本（不入库数据，仅工具）：
+- `scripts/backfill_phrases.py`：三级数据源顺序补充——①教材 JSONL
+  （主工作区 `data/PEPGaoZhong_*.json` 的 `content.word.content.phrase.phrases`，
+  2164 词自带教材词组，仅用于高中词本）；②有道网页版词组短语板块
+  （`dict.youdao.com/w/<word>/` 的 `#wordGroup`）；③海词词汇搭配板块
+  （`dict.cn/<word>` 的「词汇搭配」区）。清洗规则复用 §36 口径
+  （2-5 词、无全大写缩写、去词性前缀），在线词组强制含目标词防错词污染，
+  每词保留前 4 条并打词所在词本 levels。断点续跑（patch.json + web_failed.json）。
+- `scripts/apply_phrase_patch.py`：上传 patch.json 到服务器，用 Django ORM
+  幂等写回（仅对仍无词组的词），需 `sys.path.insert(0, "/opt/learning/backend")`。
+
+**执行结果**：教材 119 词 + 在线 1553 词，共补充 1721 词、5416 条词组（603 词双源均无，
+多为虚词/派生词/专名，属正常）。写库 updated=1721 skipped=0。
+
+**补充后覆盖率**（有词组词/总词数）：高中 3582/3743（77.3%→**95.7%**）、
+四级 4327/4543（75.9%→**95.2%**）、六级 3684/3991（67.8%→**92.3%**）、
+初中 1931/1987（79.0%→**97.2%**）、默写错误词汇 9/10。全库无词组词 2336→615，
+词组总条数 16853→22269，无 levels 词组仍为 0。
+
+**教训**：有道 jsonapi_s 的 phrs 字段对大量词返回空且 CDN 串词严重（本地也会
+「查 earn 返回 abvolt」），网页版 `#wordGroup` 板块才是更可靠的词组来源；
+有道会限流（速度从 1.1 掉到 0.37 词/s），脚本需断点续跑 + 6s 短超时 + 0.25-0.5s 间隔。
+
+## 38. 功能（2026-09-01）：每日复习限量 + 新词优先队列 + 设置页智能建议（`5ac78ff`，待 09-02 部署）
+
+**起因**：学员 zhangshanzhi（user_id=42）反馈“每日新词改为 50 未生效”（实为生效，但旧逻辑把 282 个到期复习排在 50 个新词前面，学员看到的是 342 项队列）；进一步分析发现 SM-2 下复习量是新词量的数倍（100 新词/天 → 稳态 100~300+ 复习/天），学员大量时间耗在复习上。当晚实测：学员 25 分钟刷完 282 复习 + 50 新词 + 10 词组，复习占时超 80%。
 
 **改动（方案C：限流+引导）**：
 1. **复习限量**：`_build_items` 中每日复习只纳入最久欠账的 `REVIEW_CAP_RATIO(=2) × 每日新词目标` 个，超出顺延次日（到期时间不变，次日优先入队）。新增 `DailyStudySession.review_deferred` 字段记录顺延数（迁移 0010），会话 summary 返回 `review_deferred`。
@@ -900,9 +969,10 @@ P1 信息架构重叠（统计 vs 进度）/反馈弱/布局不对称；P2 缺�
 3. **智能建议**：`GET /api/settings/` 新增 `review_backlog`（全局到期复习欠账）与 `recommended_daily_new_word_goal`（欠账≥200→20；≥100→30；≥50→40；否则 50）。设置页在欠账>0 且建议值低于当前目标时展示橙色建议横幅，可一键采纳。
 4. **顺延提示**：首页进度条（MarqueeBar）在 `review_deferred > 0` 时显示“超出上限的 N 个复习已顺延至明天”。
 5. 新增只读诊断脚本 `scripts/diag_daily_goal.py`（SSH 查生产学员设置/会话/欠账）。
+6. 已与 §36 词组按词本 level 匹配（`_pick_phrase`）合并共存；词组槽位仍从新词开始分配。
 
 **涉及文件**：`backend/apps/vocab/views.py`（_build_items、_session_data、UserSettingsView.get、REVIEW_CAP_RATIO、_recommend_new_word_goal）、`models.py` + 迁移 `0010`、`tests.py`（队列顺序/复习上限/建议字段用例）；前端 `lib/data/settings.ts`、`lib/data/httpRepo.ts`、`app/(tabs)/profile.tsx`、`app/(tabs)/index.tsx`、`components/MarqueeBar.tsx`。
 
 **验证**：本地 `manage.py test apps.vocab` 21/23 通过（2 个失败为本地缺 gesp_trainer 跨库表的既有环境问题）；`tsc --noEmit` 0 错误；`lib/data/__tests__/settings.test.ts` 通过。
 
-**部署计划（2026-09-02）**：先部署后端（migrate 0010 + 重启 learning），再 `bash /opt/learning/deploy.sh` 部署前端。队列新逻辑只对“部署后新建的当日会话”生效；学员 42 今日已建的 342 项队列不动（用户明确要求），明日起自动按新逻辑生成。上线后验证：学员 42 明日会话应为 新词 50 + 复习≤100 + 词组，首页显示顺延提示，设置页出现建议横幅（当前欠账约 122 → 建议 30）。
+**部署计划（2026-09-02）**：先部署后端（migrate 0010 + 重启 learning），再 `bash /opt/learning/deploy.sh` 部署前端。队列新逻辑只对“部署后新建的当日会话”生效；学员 42 今日已建的 342 项队列不动（用户明确要求，且当晚已全部完成），明日起自动按新逻辑生成。上线后验证：学员 42 明日会话应为 新词 50 + 复习≤100 + 词组，首页显示顺延提示，设置页出现建议横幅。
