@@ -490,6 +490,10 @@ export async function fetchDailySettings(_userId: ID): Promise<DailySettings> {
     dailyPhraseGoal: Number(data.daily_phrase_goal) || DAILY_PHRASE_GOAL_DEFAULT,
     showDailyPlan: data.show_daily_plan !== false,
     targetFinishDate: typeof data.target_finish_date === 'string' ? data.target_finish_date.slice(0, 10) : null,
+    reviewBacklog: Number.isFinite(Number(data.review_backlog)) ? Number(data.review_backlog) : undefined,
+    recommendedDailyNewWordGoal: Number.isFinite(Number(data.recommended_daily_new_word_goal))
+      ? Number(data.recommended_daily_new_word_goal)
+      : undefined,
   };
 }
 
@@ -525,7 +529,7 @@ export type DailyStudySession = {
   status: 'active' | 'completed';
   currentPosition: number;
   currentItem: DailySessionItem | null;
-  summary: { total: number; completed: number; remaining: number };
+  summary: { total: number; completed: number; remaining: number; reviewDeferred?: number };
   consolidation?: DailyConsolidation;
 };
 
@@ -563,7 +567,12 @@ function mapDailySession(data: any): DailyStudySession {
   return {
     id: Number(data.id), status: data.status, currentPosition: Number(data.current_position),
     currentItem: data.current_item ? mapItem(data.current_item) : null,
-    summary: data.summary,
+    summary: {
+      total: Number(data.summary?.total ?? 0),
+      completed: Number(data.summary?.completed ?? 0),
+      remaining: Number(data.summary?.remaining ?? 0),
+      reviewDeferred: data.summary?.review_deferred != null ? Number(data.summary.review_deferred) : undefined,
+    },
     consolidation: data.consolidation ? mapConsolidation(data.consolidation) : undefined,
   };
 }

@@ -723,7 +723,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      <MarqueeBar progress={dailyProgress} />
+      <MarqueeBar progress={dailyProgress} deferredReviews={dailySession?.summary.reviewDeferred} />
       <DailyPlanModal userId={user.id} progress={dailyProgress} enabled={showDailyPlan} />
 
       {stats && (

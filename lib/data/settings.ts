@@ -12,6 +12,10 @@ export interface DailySettings {
   showDailyPlan: boolean;
   /** 目标完成词本日期（ISO yyyy-mm-dd），null 表示未设置 */
   targetFinishDate: string | null;
+  /** 云端派生：当前到期复习欠账数（本地模式无此字段） */
+  reviewBacklog?: number;
+  /** 云端派生：按复习欠账推荐的每日新词目标 */
+  recommendedDailyNewWordGoal?: number;
 }
 
 export const DEFAULT_DAILY_SETTINGS: DailySettings = {
@@ -47,13 +51,19 @@ function normalizeTargetDate(value: unknown): string | null {
 }
 
 function normalizeSettings(value: Partial<DailySettings> | null | undefined): DailySettings {
-  return {
+  const settings: DailySettings = {
     dailyNewWordGoal: positiveInt(value?.dailyNewWordGoal, DAILY_GOAL_DEFAULT),
     dailyQuizGoal: positiveInt(value?.dailyQuizGoal, DAILY_QUIZ_GOAL_DEFAULT),
     dailyPhraseGoal: positiveInt(value?.dailyPhraseGoal, DAILY_PHRASE_GOAL_DEFAULT),
     showDailyPlan: value?.showDailyPlan !== false,
     targetFinishDate: normalizeTargetDate(value?.targetFinishDate),
   };
+  // 云端派生字段仅在有值时携带，避免本地模式对象多出 undefined 键。
+  if (typeof value?.reviewBacklog === 'number') settings.reviewBacklog = value.reviewBacklog;
+  if (typeof value?.recommendedDailyNewWordGoal === 'number') {
+    settings.recommendedDailyNewWordGoal = value.recommendedDailyNewWordGoal;
+  }
+  return settings;
 }
 
 export async function getDailySettings(userId: string): Promise<DailySettings> {

@@ -220,6 +220,9 @@ class DailyStudySession(models.Model):
     study_date = models.DateField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
     current_position = models.PositiveIntegerField(default=0)
+    review_deferred = models.PositiveIntegerField(
+        default=0, help_text="建队列时因复习上限而顺延到次日的到期复习数",
+    )
     created_at = models.BigIntegerField(default=0)
     updated_at = models.BigIntegerField(default=0)
 

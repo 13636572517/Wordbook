@@ -41,6 +41,9 @@ export default function ProfileScreen() {
   const [showDailyPlan, setShowDailyPlan] = useState(true);
   const [targetDate, setTargetDate] = useState<string | null>(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  // 云端派生：复习欠账与推荐新词量（供智能建议横幅展示）
+  const [reviewBacklog, setReviewBacklog] = useState<number | null>(null);
+  const [recommendedGoal, setRecommendedGoal] = useState<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -89,6 +92,8 @@ export default function ProfileScreen() {
         setPhraseGoalInput(String(settings.dailyPhraseGoal));
         setShowDailyPlan(settings.showDailyPlan);
         setTargetDate(settings.targetFinishDate);
+        setReviewBacklog(settings.reviewBacklog ?? null);
+        setRecommendedGoal(settings.recommendedDailyNewWordGoal ?? null);
       })();
     }, [user]),
   );
@@ -116,6 +121,13 @@ export default function ProfileScreen() {
     setTargetDate(v);
     setDatePickerOpen(false);
     if (user) await setDailySettings(user.id, { targetFinishDate: v });
+  };
+
+  // 一键采纳建议新词量：降低新词摄入，先消化复习欠账。
+  const applyRecommendedGoal = async () => {
+    if (!user || recommendedGoal == null) return;
+    setGoalInput(String(recommendedGoal));
+    await setDailySettings(user.id, { dailyNewWordGoal: recommendedGoal });
   };
 
   const handleSwitch = (id: string) => {
@@ -286,8 +298,45 @@ export default function ProfileScreen() {
           />
         </View>
         <Text style={[styles.goalNote, { color: colors.subtitle }]}>
-          全局生效，所有词本共用
+          全局生效，所有词本共用。新词学完后会在后续几天产生数倍复习量，请量力设置。
         </Text>
+
+        {/* 复习欠账智能建议：欠账较多时引导降低新词目标 */}
+        {reviewBacklog != null &&
+          recommendedGoal != null &&
+          reviewBacklog > 0 &&
+          recommendedGoal < parseInt(goalInput, 10) && (
+            <View
+              style={[
+                styles.goalCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: '#F5A623',
+                  marginTop: 8,
+                },
+              ]}
+            >
+              <Text style={{ color: colors.text, fontSize: 14, lineHeight: 21 }}>
+                当前有 {reviewBacklog} 个到期复习待处理，建议将每日新词目标降为{' '}
+                {recommendedGoal}，先消化复习再提速。
+              </Text>
+              <TouchableOpacity
+                onPress={applyRecommendedGoal}
+                style={{
+                  marginTop: 10,
+                  alignSelf: 'flex-start',
+                  backgroundColor: '#F5A623',
+                  borderRadius: 6,
+                  paddingVertical: 8,
+                  paddingHorizontal: 14,
+                }}
+              >
+                <Text style={{ color: '#0D0D0D', fontSize: 14, fontWeight: '700' }}>
+                  一键采纳（{recommendedGoal} 个/天）
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
         {/* Account List Info（仅本地模式）*/}
         {!USE_CLOUD && (

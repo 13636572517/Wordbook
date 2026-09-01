@@ -96,9 +96,10 @@ class DailyStudySessionAPITest(TestCase):
         resp = self.client.get(f"/api/sessions/today/?wordbook_id={self.wordbook.id}")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
+        # 新词优先：新词排在学习队列最前，复习词随后，词组收尾。
         self.assertEqual(
             list(DailyStudySessionItem.objects.filter(session_id=data["id"]).values_list("kind", flat=True)),
-            ["word_review", "word_new", "phrase"],
+            ["word_new", "word_review", "phrase"],
         )
         self.assertEqual(DailyStudySessionItem.objects.get(session_id=data["id"], position=2).phrase, "new phrase")
 
@@ -128,8 +129,26 @@ class DailyStudySessionAPITest(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertNotIn("items", data)
-        self.assertEqual(data["current_item"]["kind"], "word_review")
-        self.assertEqual(data["summary"], {"total": 3, "completed": 0, "remaining": 3})
+        self.assertEqual(data["current_item"]["kind"], "word_new")
+        self.assertEqual(
+            data["summary"], {"total": 3, "completed": 0, "remaining": 3, "review_deferred": 0},
+        )
+
+    def test_review_cap_defers_excess_due_words(self):
+        # 复习上限 = 新词目标(1) × 2；新增 4 个到期词后共 5 个到期，仅最久的 2 个入队。
+        for i in range(4):
+            word = Word.objects.create(word=f"overdue{i}", translation=f"到期词{i}")
+            WordbookWord.objects.create(wordbook=self.wordbook, word=word)
+            UserWordProgress.objects.create(
+                user_id=1, wordbook=self.wordbook, word=word, due=i + 1,
+            )
+        resp = self.client.get(f"/api/sessions/today/?wordbook_id={self.wordbook.id}")
+        data = resp.json()
+        kinds = list(
+            DailyStudySessionItem.objects.filter(session_id=data["id"]).values_list("kind", flat=True),
+        )
+        self.assertEqual(kinds.count("word_review"), 2)
+        self.assertEqual(data["summary"]["review_deferred"], 3)
 
     def test_completion_creates_three_phase_consolidation_snapshot(self):
         session = DailyStudySession.objects.create(
@@ -383,6 +402,9 @@ class UserSettingsAPITest(TestCase):
         self.assertEqual(resp.json()["daily_quiz_goal"], 20)
         self.assertEqual(resp.json()["daily_phrase_goal"], 10)
         self.assertTrue(resp.json()["show_daily_plan"])
+        # 无复习欠账时返回欠账 0 与建议新词量 50（供设置页智能提示）
+        self.assertEqual(resp.json()["review_backlog"], 0)
+        self.assertEqual(resp.json()["recommended_daily_new_word_goal"], 50)
 
         # 只更新新词目标不应覆盖新增设置
         resp = self.client.post("/api/settings/", {"daily_new_word_goal": 35}, format="json")
@@ -422,6 +444,18 @@ class UserSettingsAPITest(TestCase):
     def test_invalid_goal_rejected(self):
         resp = self.client.post("/api/settings/", {"daily_new_word_goal": 0}, format="json")
         self.assertEqual(resp.status_code, 400)
+
+    def test_recommendation_drops_with_review_backlog(self):
+        # 欠账 ≥ 200 时建议降到 20，引导学员先消化复习再学新词。
+        wb = Wordbook.objects.create(owner_id=None, name="建议测试", level="junior", type="system", created_at=0)
+        for i in range(210):
+            word = Word.objects.create(word=f"bk{i}", translation=f"欠账{i}")
+            WordbookWord.objects.create(wordbook=wb, word=word)
+            UserWordProgress.objects.create(user_id=7, wordbook=wb, word=word, due=0)
+        resp = self.client.get("/api/settings/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["review_backlog"], 210)
+        self.assertEqual(resp.json()["recommended_daily_new_word_goal"], 20)
 
 
 class TeacherStudentDailyDetailAPITest(TestCase):

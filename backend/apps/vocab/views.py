@@ -412,6 +412,26 @@ def _phrase_key(word_id, phrase):
     return f"{word_id}:{phrase.strip().lower()}"
 
 
+# 每日复习上限 = 每日新词目标 × 该倍数；超出部分顺延次日，
+# 避免 SM-2 复习雪球占用全部学习时间。
+REVIEW_CAP_RATIO = 2
+
+
+def _recommend_new_word_goal(review_backlog):
+    """按复习欠账量给出每日新词目标建议：欠账越多越应降低新词摄入。
+
+    新词进入间隔重复后会在后续数日产生数倍复习量；欠账高企时继续大量
+    学新词会让学员几乎全部时间耗在复习上。
+    """
+    if review_backlog >= 200:
+        return 20
+    if review_backlog >= 100:
+        return 30
+    if review_backlog >= 50:
+        return 40
+    return 50
+
+
 def _session_item_data(item):
     return {
         "position": item.position,
@@ -444,6 +464,7 @@ def _session_data(session):
             "total": total,
             "completed": total - remaining,
             "remaining": remaining,
+            "review_deferred": session.review_deferred,
         },
     }
     try:
@@ -566,7 +587,7 @@ def _apply_phrase_grade(user_id, wordbook_id, item, grade, now_ms):
 
 
 class DailyStudySessionTodayView(APIView):
-    """读取或创建当天固定的单词优先、词组收尾学习队列。"""
+    """读取或创建当天新词优先、复习限量、词组收尾的学习队列。"""
 
     permission_classes = [IsAuthenticated]
 
@@ -594,6 +615,7 @@ class DailyStudySessionTodayView(APIView):
                 )
                 if created:
                     self._build_items(session, now_ms)
+                    session.save(update_fields=["review_deferred"])
                 elif session.status == DailyStudySession.Status.COMPLETED:
                     _ensure_consolidation(session, now_ms)
         except IntegrityError:
@@ -611,9 +633,14 @@ class DailyStudySessionTodayView(APIView):
         ).values_list("word_id", flat=True))
         remaining_new = max(settings.daily_new_word_goal - len(learned_today), 0)
 
-        due_progress = list(UserWordProgress.objects.filter(
+        # 复习限量：每日只纳入最久欠账的 review_limit 个到期复习，超出部分顺延次日。
+        # SM-2 下复习量是新词量的数倍，不限量会让学员大部分时间耗在复习上。
+        review_limit = settings.daily_new_word_goal * REVIEW_CAP_RATIO
+        due_qs = UserWordProgress.objects.filter(
             user_id=session.user_id, wordbook=session.wordbook, due__lte=now_ms,
-        ).select_related("word").order_by("due", "word__word"))
+        )
+        session.review_deferred = max(due_qs.count() - review_limit, 0)
+        due_progress = list(due_qs.select_related("word").order_by("due", "word__word")[:review_limit])
         due_word_ids = {progress.word_id for progress in due_progress}
         new_links = list(WordbookWord.objects.filter(wordbook=session.wordbook).exclude(
             word_id__in=due_word_ids
@@ -624,10 +651,11 @@ class DailyStudySessionTodayView(APIView):
         ).select_related("word").order_by("word__word")[:remaining_new])
 
         rows = []
-        for progress in due_progress:
-            rows.append({"kind": DailyStudySessionItem.Kind.WORD_REVIEW, "word": progress.word})
+        # 新词优先：打开学习页先看到当日新词，直接体现每日新词目标；复习词随后。
         for link in new_links:
             rows.append({"kind": DailyStudySessionItem.Kind.WORD_NEW, "word": link.word})
+        for progress in due_progress:
+            rows.append({"kind": DailyStudySessionItem.Kind.WORD_REVIEW, "word": progress.word})
 
         phrase_limit = settings.daily_phrase_goal
         scheduled_keys = set()
@@ -859,7 +887,13 @@ class UserSettingsView(APIView):
                 "show_daily_plan": True,
             },
         )
-        return Response(UserSettingsSerializer(obj).data)
+        data = UserSettingsSerializer(obj).data
+        # 复习欠账与推荐新词量：供设置页给出智能建议（新词越多复习雪球越大）
+        now_ms = int(time.time() * 1000)
+        backlog = UserWordProgress.objects.filter(user_id=user_id, due__lte=now_ms).count()
+        data["review_backlog"] = backlog
+        data["recommended_daily_new_word_goal"] = _recommend_new_word_goal(backlog)
+        return Response(data)
 
     def post(self, request):
         user_id = request.user.id
