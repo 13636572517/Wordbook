@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-09-02（§38 每日复习限量 2×新词 + 新词优先队列 + 设置页复习欠账智能建议，已部署）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-09-06（§39 矮屏评分按钮溢出修复，已部署）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -984,3 +984,33 @@ worktree 构建需软链主工作区的 `node_modules`、`lib/data/dictCache.jso
 - 前端：`bash /opt/learning/deploy.sh`，bundle 4,185,241 bytes、GESP=2、loginError=2、静态路由 18 条；新标识符 reviewDeferred/reviewBacklog/recommendedDailyNewWordGoal 均在 bundle（×2）。
 - 接口验证：GET /api/settings/（user 42）返回 `review_backlog=4, recommended_daily_new_word_goal=50`（学员前夜已清完欠账，今日无需降量，横幅不显示属预期）。
 - 队列逻辑生产实测（事务回滚、零残留）：造 45 个到期词 + 目标 20 → 队列 = 新词 20（position 0-19，最前）+ 复习 40（上限 2×20）+ 词组 10，`review_deferred=5`。全部符合预期。
+```
+
+## 39. 修复（2026-09-06）：矮屏 PWA 学习页评分按钮溢出不可见不可按（`38d848f`，已部署）
+
+**现象**：学员报告 PWA 手机端学习时，释义较长的单词翻面后，页面下方
+Again/Hard/Good/Easy 四个熟练度按钮超出屏幕底部不可见、无法点击。
+
+**根因**：学习区（单词/词组/巩固闪卡三个分支）及数据页「专项复习」覆盖层
+是固定高度 `flex:1` View（无滚动容器）。卡片区内容总高 = 卡片（45% 屏高，
+封顶 340）+ 56px 喇叭按钮 + 评分区 ≈ 465px+，而矮屏手机（如 375×560 可视区）
+顶部占 header/进度条/统计行后可用空间仅 ~340px → 内容溢出被裁切且页面
+不可滚动 → 按钮永久不可达。与释义长短本身无关，长词多停留阅读更容易暴露。
+
+**修复**（滚动容器兜底，跨端适用，无视觉回归）：
+- `app/(tabs)/index.tsx`：学习/词组/巩固闪卡三处分支外层由 View 改
+  `ScrollView`（style `learnScroll` flex:1 + contentContainerStyle
+  `cardArea`/`reviewArea` 改 flexGrow:1）——内容超高时页面可滚动到达按钮；
+  内容不超高时 flexGrow + 居中布局与原来完全一致。
+- `app/(tabs)/data.tsx`：专项复习覆盖层 `trainBody` 同步套 ScrollView
+  （新增 `trainBodyContent`），与学习页同源修复。
+- `components/FlashCard.tsx`：背面 ScrollView 加 `nestedScrollEnabled`，
+  Android 原生滚动到底后可继续联动外层页面滚动（Web/PWA 自带滚动链）。
+
+**验证**：tsc 0 错误；本地 Browser 双尺寸实测——375×560 翻面后按钮在屏外
+（y 584~621），卡片区滚动 163px 后四按钮完整可见且点击评分生效；
+375×480 极端矮屏按钮直接完整可见可点；无 console 错误。
+
+**部署（2026-09-06 完成，用户直接指示）**：main `6964a9b→38d848f` 推送后，
+服务器 git pull + `bash /opt/learning/deploy.sh`：bundle 4,185,735 bytes
+（> 4,116,000）、GESP=2、loginError=2、HTTP 200。
