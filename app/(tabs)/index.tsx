@@ -760,7 +760,12 @@ export default function HomeScreen() {
 
       {/* --- 复习测试流程 --- */}
       {reviewPhase === 'flashcards' && todayReviewWords.length > 0 && (
-        <View style={styles.reviewArea}>
+        <ScrollView
+          style={styles.learnScroll}
+          contentContainerStyle={styles.reviewArea}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
           <View style={styles.reviewProgress}>
             <Text style={[styles.reviewProgressText, { color: colors.subtitle }]}>
               巩固复习 · 第 {reviewFlashPass + 1}/3 遍 · 第 {reviewFlashIdx + 1}/{todayReviewWords.length} 词
@@ -810,7 +815,7 @@ export default function HomeScreen() {
               点击卡片查看释义
             </Text>
           )}
-        </View>
+        </ScrollView>
       )}
 
       {reviewPhase === 'choice' && (
@@ -912,14 +917,19 @@ export default function HomeScreen() {
 
       {/* --- 正常学习模式 --- */}
       {!reviewPhase && !extraDecisionPending && phraseQueue.length > 0 ? (
-        <View style={styles.cardArea}>
+        <ScrollView
+          style={styles.learnScroll}
+          contentContainerStyle={styles.cardArea}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
           <Text style={[styles.masteryHint, { color: colors.subtitle }]}>词组学习</Text>
           <TouchableOpacity style={[styles.phraseCard, { backgroundColor: colors.card }]} onPress={() => setPhraseFlipped(true)} activeOpacity={0.8}>
             <Text style={[styles.phraseText, { color: colors.text }]}>{phraseQueue[0].phrase}</Text>
             {phraseFlipped && <Text style={[styles.phraseMeaning, { color: colors.subtitle }]}>{phraseQueue[0].meaning}</Text>}
           </TouchableOpacity>
           {phraseFlipped ? <View style={styles.gradeRow}>{GRADES.map((g) => <TouchableOpacity key={g.grade} style={[styles.gradeButton, { backgroundColor: g.color }, isPhraseSaving && styles.gradeButtonDisabled]} onPress={() => handlePhraseGrade(g.grade)} disabled={isPhraseSaving}><Text style={styles.gradeText}>{isPhraseSaving ? '保存中' : g.label}</Text></TouchableOpacity>)}</View> : <Text style={[styles.hint, { color: colors.pinyin }]}>点击卡片查看释义</Text>}
-        </View>
+        </ScrollView>
       ) : !reviewPhase && !extraDecisionPending && !word ? (
         <ScrollView
           style={styles.emptyScroll}
@@ -961,7 +971,12 @@ export default function HomeScreen() {
           )}
         </ScrollView>
       ) : !reviewPhase && !extraDecisionPending && word ? (
-        <View style={styles.cardArea}>
+        <ScrollView
+          style={styles.learnScroll}
+          contentContainerStyle={styles.cardArea}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
           {extraRemaining != null && extraRemaining > 0 && (
             <View style={[styles.extraBadge, { backgroundColor: colors.info }]}>
               <Text style={styles.extraBadgeText}>加练中 · 剩余 {extraRemaining} 词</Text>
@@ -1008,7 +1023,7 @@ export default function HomeScreen() {
               点击卡片查看释义
             </Text>
           )}
-        </View>
+        </ScrollView>
       ) : null}
       </View>
     </View>
@@ -1128,8 +1143,14 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     textAlign: 'center',
   },
-  cardArea: {
+  // 卡片/按钮学习区外层滚动容器：短屏放不下卡片+按钮时也能滚动到达
+  // （此前为固定 flex View，内容溢出即不可见不可按）
+  learnScroll: {
     flex: 1,
+    width: '100%',
+  },
+  cardArea: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: 40,
@@ -1196,8 +1217,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   // --- 复习测试流程 ---
+  // 复习闪卡分支的滚动 content 样式
   reviewArea: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingBottom: 60,

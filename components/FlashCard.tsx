@@ -120,10 +120,12 @@ export default function FlashCard({ word, language, onFlip }: Props) {
             },
           ]}
         >
+          {/* Android：嵌套在页面滚动容器内时，滚到底后可继续滚动页面 */}
           <ScrollView
             style={styles.backScroll}
             contentContainerStyle={styles.backContent}
             showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
           >
             {(word.phonetic || word.pronunciation) ? (
               <Text style={[styles.pronunciationBack, { color: colors.pinyin }]}>

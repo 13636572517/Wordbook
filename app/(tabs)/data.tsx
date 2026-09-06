@@ -268,7 +268,12 @@ export default function DataScreen() {
               </TouchableOpacity>
             </View>
           ) : reviewCurrent ? (
-            <View style={styles.trainBody}>
+            <ScrollView
+              style={styles.trainBody}
+              contentContainerStyle={styles.trainBodyContent}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
               <FlashCard key={reviewCurrent.id} word={reviewCurrent} language={ENGLISH} />
               <View style={styles.gradeRow}>
                 {GRADES.map((g) => (
@@ -282,7 +287,7 @@ export default function DataScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
+            </ScrollView>
           ) : null}
         </View>
       </View>
@@ -598,7 +603,8 @@ const styles = StyleSheet.create({
   // 训练覆盖层
   trainHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 8 },
   trainExit: { width: 30, alignItems: 'flex-start' },
-  trainBody: { flex: 1 },
+  trainBody: { flex: 1, width: '100%' },
+  trainBodyContent: { flexGrow: 1, paddingBottom: 24 },
   gradeRow: { flexDirection: 'row', gap: 8, marginTop: 18 },
   gradeButton: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: Layout.radius.md },
   gradeLabel: { color: '#fff', fontWeight: '700', fontSize: 13 },
