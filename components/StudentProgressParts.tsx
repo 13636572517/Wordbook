@@ -5,13 +5,9 @@ import { StyleSheet, View, Text, TouchableOpacity, useWindowDimensions } from 'r
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import useColors from './useColors';
 import type { StudentProgressSummary, WeakWordEntry, WrongLogEntry } from '@/lib/data/studentProgress';
+import { letterOf } from '@/lib/firstLetter';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-export function letterOf(word: string): string {
-  const ch = (word.charAt(0) || '').toUpperCase();
-  return /[A-Z]/.test(ch) ? ch : '#';
-}
 
 function checkinColor(count: number): string {
   if (count === 0) return 'rgba(128,128,128,0.15)';
