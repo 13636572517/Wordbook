@@ -4,7 +4,7 @@ import { filterPhrasesByLevel } from '@/lib/quizgen';
 import { speakWord } from '@/lib/speech';
 import { useSession } from './SessionProvider';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
     Animated,
     Platform,
@@ -21,11 +21,9 @@ type Props = {
   word: Word;
   language: LanguageConfig;
   onFlip?: (isFlipped: boolean) => void;
-  /** true 时挂载/单词变化自动朗读（首字母转练浏览页用）；浏览器可能拦截，喇叭按钮为兜底 */
-  autoSpeak?: boolean;
 };
 
-export default function FlashCard({ word, language, onFlip, autoSpeak }: Props) {
+export default function FlashCard({ word, language, onFlip }: Props) {
   const [isFlipped, setIsFlipped] = useState(false);
   const flipAnim = useRef(new Animated.Value(0)).current;
   const colors = useColors();
@@ -35,13 +33,6 @@ export default function FlashCard({ word, language, onFlip, autoSpeak }: Props) 
   const { height: winHeight } = useWindowDimensions();
   // 卡片高度随屏幕自适应，小屏不被评分按钮挤压
   const cardHeight = Math.min(340, Math.round(winHeight * 0.45));
-
-  // 自动朗读：挂载/单词变化时触发（首字母转练浏览页启用）。
-  // 浏览器可能因自动播放策略拦截，喇叭按钮保留为兜底。
-  useEffect(() => {
-    if (!autoSpeak) return;
-    speakWord(word.word, language);
-  }, [autoSpeak, word.word, language]);
 
   const flipCard = () => {
     const toValue = isFlipped ? 0 : 1;

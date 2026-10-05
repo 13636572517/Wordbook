@@ -15,14 +15,29 @@ assert.match(
   'clicking the study card front must trigger pronunciation in the user gesture',
 );
 assert.match(
-  flashCard,
-  /autoSpeak/,
-  'flash card must support opt-in auto pronunciation when the word changes',
+  firstLetterTrainer,
+  /import \{ speakWord \} from '@\/lib\/speech'/,
+  'first-letter review must import speakWord for gesture-driven auto pronunciation',
 );
 assert.match(
   firstLetterTrainer,
-  /<FlashCard[^>]*autoSpeak/,
-  'first-letter review must enable auto pronunciation on its flash card',
+  /const startLetter = \(l: string\) => \{[\s\S]{0,300}?speakWord\(/,
+  'tapping a letter must speak the first word synchronously inside the user gesture',
+);
+assert.match(
+  firstLetterTrainer,
+  /const goPrevWord = \(\) => \{[\s\S]{0,300}?speakWord\(/,
+  'the previous-word button must speak the previous word synchronously in the user gesture',
+);
+assert.match(
+  firstLetterTrainer,
+  /const goNextWord = \(\) => \{[\s\S]{0,300}?speakWord\(/,
+  'the next-word button must speak the next word synchronously in the user gesture',
+);
+assert.match(
+  firstLetterTrainer,
+  /onPress=\{isLast \? beginPractice : goNextWord\}/,
+  'the next button must stay wired to the speaking handler',
 );
 assert.match(
   sessionProvider,

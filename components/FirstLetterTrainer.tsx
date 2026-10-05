@@ -5,6 +5,7 @@ import { repo } from '@/lib/data';
 import type { UserWordProgress, Word } from '@/lib/data';
 import { countWordsByLetter, pickMasteredIds, wordsStartingWith } from '@/lib/firstLetter';
 import { getLanguageByCode } from '@/lib/languages';
+import { speakWord } from '@/lib/speech';
 import { useSession } from '@/components/SessionProvider';
 import QuizRunner from '@/components/QuizRunner';
 import FlashCard from '@/components/FlashCard';
@@ -74,6 +75,10 @@ export default function FirstLetterTrainer({ onExit }: { onExit: () => void }) {
   };
 
   const startLetter = (l: string) => {
+    // 自动发音：必须在本点击手势内同步调用（iOS/移动端自动播放限制）。
+    // 放到 useEffect 等手势外时机会被浏览器静默拦截，表现为完全无声。
+    const first = wordsStartingWith(words ?? [], l)[0];
+    if (first) speakWord(first.word, ENGLISH);
     resetSkipped();
     setLetter(l);
     setReviewIdx(0);
@@ -86,6 +91,21 @@ export default function FirstLetterTrainer({ onExit }: { onExit: () => void }) {
     setStage('pick');
     setLetter(null);
     resetSkipped();
+  };
+
+  // 上一词/下一词：切换单词时同样在点击手势内同步发音
+  const goPrevWord = () => {
+    const prev = letterWords[reviewIdx - 1];
+    if (!prev) return;
+    speakWord(prev.word, ENGLISH);
+    setReviewIdx(reviewIdx - 1);
+  };
+
+  const goNextWord = () => {
+    const next = letterWords[reviewIdx + 1];
+    if (!next) return;
+    speakWord(next.word, ENGLISH);
+    setReviewIdx(reviewIdx + 1);
   };
 
   // skipTool.resolve：实时读取剩余词进度判定已掌握，累积到 skippedRef 供后续阶段剔除
@@ -260,20 +280,20 @@ export default function FirstLetterTrainer({ onExit }: { onExit: () => void }) {
           第 {reviewIdx + 1} / {letterWords.length} 词 · 点击卡片查看释义
         </Text>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.reviewBody}>
-          <FlashCard key={current.id} word={current} language={ENGLISH} autoSpeak />
+          <FlashCard key={current.id} word={current} language={ENGLISH} />
         </ScrollView>
         <View style={styles.reviewNav}>
           <TouchableOpacity
             style={[styles.navBtn, { borderColor: colors.border }, reviewIdx === 0 && styles.dimmed]}
             disabled={reviewIdx === 0}
-            onPress={() => setReviewIdx(reviewIdx - 1)}
+            onPress={goPrevWord}
             activeOpacity={0.7}
           >
             <Text style={[styles.navBtnText, { color: colors.text }]}>上一词</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.navBtn, { backgroundColor: colors.tint, borderColor: colors.tint }]}
-            onPress={isLast ? beginPractice : () => setReviewIdx(reviewIdx + 1)}
+            onPress={isLast ? beginPractice : goNextWord}
             activeOpacity={0.8}
           >
             <Text style={[styles.navBtnText, { color: colors.onTint }]}>
