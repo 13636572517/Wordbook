@@ -1055,3 +1055,26 @@ Again/Hard/Good/Easy 四个熟练度按钮超出屏幕底部不可见、无法�
 上线核验：index.html 引用新 entry-097b13a8；新 bundle `first-letter-choice`×1、
 `首字母转练`（\u 转义）×2，旧 bundle（dist.bak）均为 0；本机与
 https://learning.yusuan.xyz 均 HTTP 200。
+
+## 41. 功能（2026-10-05）：首字母转练浏览页自动发音（`ab9276a`，待部署）
+
+**需求**：用户反馈浏览阶段需手动点发音按钮；改为显示单词时自动朗读。
+
+**改动**：
+1. `components/FlashCard.tsx`：新增可选 `autoSpeak` 属性（默认关，其他调用方
+   零影响）——true 时挂载/单词变化经 useEffect 自动调 `speakWord`；喇叭按钮
+   与点卡片发音保留为兑底/手动重听。
+2. `components/FirstLetterTrainer.tsx`：浏览页 `<FlashCard ... autoSpeak />` 启用
+   （换词经 key 重挂，天然逐词触发一次）。
+3. `components/__tests__/ui-regressions.test.ts`：新增 2 条内容断言（FlashCard
+   支持 autoSpeak；浏览页启用）。
+
+**说明**：浏览器自动播放政策可能拦截无手势播放（iOS 较严格；Android/鸿蒙
+PWA 在用户交互后一般允许），拦截时喇叭按钮兑底；真机播放效果需实设备复核。
+
+**验证**：tsc 0 错误；ui-regressions 通过；本地浏览器端到端——进入/下一词/
+上一词/二次进入共 4 次切词全部自动触发且单词匹配（__speakLog 网络请求对照），
+翻面手动行为保持，学习页等场景无影响，无新增控制台错误。
+
+**部署**：待用户确认后执行：push origin/main → 服务器 git pull +
+`bash /opt/learning/deploy.sh`。
