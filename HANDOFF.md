@@ -1015,7 +1015,7 @@ Again/Hard/Good/Easy 四个熟练度按钮超出屏幕底部不可见、无法�
 服务器 git pull + `bash /opt/learning/deploy.sh`：bundle 4,185,735 bytes
 （> 4,116,000）、GESP=2、loginError=2、HTTP 200。
 
-## 40. 功能（2026-10-05）：练习页「首字母转练」（`7911388`，待部署）
+## 40. 功能（2026-10-05）：练习页「首字母转练」（`d6ddfdb`，已部署）
 
 **功能**：练习 Tab 顶部新增「首字母转练」入口。选一个字母 → 快速浏览该字母
 全部单词（纯浏览闪卡，可「跳过复习」）→ 释义选择 → 单词默写 → 完成汇总
@@ -1048,4 +1048,10 @@ Again/Hard/Good/Easy 四个熟练度按钮超出屏幕底部不可见、无法�
 3743），同一单词可能以两条互斥释义同题出现（如 zip×2）；A 开头 543 个词条为
 词本内真实数量（去重后 310 词）。
 
-**部署**：待用户确认；前端唯一部署方式为服务器 `bash /opt/learning/deploy.sh`。
+**部署（2026-10-05 完成，用户确认）**：部署时机检查——全平台最近 30 分钟
+无学习活动。本地 push origin/main `44cd370→d6ddfdb`；服务器 git pull
+（`38d848f→d6ddfdb` fast-forward）+ `bash /opt/learning/deploy.sh`：bundle
+4,199,011 bytes（> 4,116,000）、GESP=2、静态路由 18 条、dist.bak 已备份。
+上线核验：index.html 引用新 entry-097b13a8；新 bundle `first-letter-choice`×1、
+`首字母转练`（\u 转义）×2，旧 bundle（dist.bak）均为 0；本机与
+https://learning.yusuan.xyz 均 HTTP 200。
