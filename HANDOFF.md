@@ -1082,3 +1082,32 @@ fast-forward）+ `bash /opt/learning/deploy.sh`：bundle 4,199,107 bytes、GESP=
 静态路由 18 条。上线核验：index.html 引用新 entry-38c47e7c；新 bundle
 `autoSpeak`×2、旧 bundle（dist.bak）为 0；本机与 https://learning.yusuan.xyz
 均 HTTP 200。
+
+## 42. 修复（2026-10-05）：首字母转练浏览页自动发音失效（`c2949e0`，待部署）
+
+**现象**：§41 上线后用户实测浏览页仍不自动发音（桌面自动化验证通过、真机无声）。
+
+**根因**：§41 的 `autoSpeak` 在 `FlashCard` 的 `useEffect` 中调用 `speakWord`
+——渲染完成后才执行，**脱离用户点击手势的调用栈**。iOS Safari / 鸿蒙等移动端
+浏览器只放行「用户手势内同步调用」的音频播放（`lib/speech.ts` 已记录该约束），
+手势外的 `audio.play()` 与 `speechSynthesis.speak()` 均被静默拦截；桌面 Chrome
+策略宽松（域内有过交互即放行），故上回自动化验证无法暴露此问题。
+
+**修复**（与已验证可用的手动喇叭按钮同通道）：
+1. `components/FlashCard.tsx`：移除 `autoSpeak` 属性与对应 useEffect（回退 §41 方案）。
+2. `components/FirstLetterTrainer.tsx`：三处点击手势内同步发音——`startLetter`
+   （点字母即发音第一个词）、`goPrevWord`/`goNextWord`（上一词/下一词切换瞬间
+   发音目标词）。所有切词入口均为点击驱动，无手势外调用。
+3. `components/__tests__/ui-regressions.test.ts`：断言更新为「手势内同步发音」
+   （speakWord 导入 + 3 处处理器内调用 + 下一词按钮接线）。
+
+**验证**：tsc 0 错误；ui-regressions 单测通过；浏览器实测 7 组操作（点字母/
+下一词/上一词/连点×2/喇叭/点卡片）共 14 条 play 调用，每组恰好「代理 404 +
+youdao 回退」2 条、与点击时间戳差 ≤3ms（同步触发铁证），等待期间零多余调用，
+音频真实播放（currentTime 推进）。
+
+**已知存量问题**（与本次无关）：`lib/__tests__/quizgen.test.ts` 的 `weak` 用例
+在 HEAD 上预先失败（weak.length 4 ≠ 2，经 git stash 对照确认），待单独排查。
+
+**部署**：待用户确认后执行：push origin/main → 服务器 git pull +
+`bash /opt/learning/deploy.sh`。
