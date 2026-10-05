@@ -25,7 +25,7 @@ export interface TodayStats {
   details: TodayStatDetail[]; // one entry per word, last grade + ts
 }
 
-const MASTERED_REPETITIONS = 3;
+export const MASTERED_REPETITIONS = 3;
 
 function dayKey(ts: number): string {
   return new Date(ts).toISOString().slice(0, 10);
