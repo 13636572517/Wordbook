@@ -260,7 +260,7 @@ export default function FirstLetterTrainer({ onExit }: { onExit: () => void }) {
           第 {reviewIdx + 1} / {letterWords.length} 词 · 点击卡片查看释义
         </Text>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.reviewBody}>
-          <FlashCard key={current.id} word={current} language={ENGLISH} />
+          <FlashCard key={current.id} word={current} language={ENGLISH} autoSpeak />
         </ScrollView>
         <View style={styles.reviewNav}>
           <TouchableOpacity

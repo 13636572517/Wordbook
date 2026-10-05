@@ -4,6 +4,7 @@ import path from 'node:path';
 
 const root = process.cwd();
 const flashCard = fs.readFileSync(path.join(root, 'components/FlashCard.tsx'), 'utf8');
+const firstLetterTrainer = fs.readFileSync(path.join(root, 'components/FirstLetterTrainer.tsx'), 'utf8');
 const sessionProvider = fs.readFileSync(path.join(root, 'components/SessionProvider.tsx'), 'utf8');
 const speech = fs.readFileSync(path.join(root, 'lib/speech.ts'), 'utf8');
 const layout = fs.readFileSync(path.join(root, 'constants/Layout.ts'), 'utf8');
@@ -12,6 +13,16 @@ assert.match(
   flashCard,
   /const handleFrontPress = \(\) => \{[\s\S]*?speakWord\(word\.word, language\);\s*flipCard\(\);\s*\}/,
   'clicking the study card front must trigger pronunciation in the user gesture',
+);
+assert.match(
+  flashCard,
+  /autoSpeak/,
+  'flash card must support opt-in auto pronunciation when the word changes',
+);
+assert.match(
+  firstLetterTrainer,
+  /<FlashCard[^>]*autoSpeak/,
+  'first-letter review must enable auto pronunciation on its flash card',
 );
 assert.match(
   sessionProvider,
