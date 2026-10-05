@@ -60,6 +60,13 @@ interface QuizRunnerProps {
   preserveOrder?: boolean;
   onAdvance?: (position: number) => void | Promise<void>;
   onExit?: (correct?: number, total?: number) => void;
+  /** 练习中「跳过已掌握」工具：点击时收集尚未作答（当前题之后）的词 id 交给 resolve，
+   *  返回的 id 将从题目池剔除；已答题目与当前题不受影响。不传时按钮不渲染。 */
+  skipTool?: {
+    label: string;
+    resolve: (remainingWordIds: string[]) => Promise<string[]>;
+    onResult?: (removed: number, remaining: number) => void;
+  };
 }
 
 // 本地打散（Fisher–Yates），避免依赖 quizgen 内部未导出函数
@@ -85,6 +92,7 @@ export default function QuizRunner({
   preserveOrder = false,
   onAdvance,
   onExit,
+  skipTool,
 }: QuizRunnerProps) {
   const colors = useColors();
   const { user, wordbook } = useSession();
@@ -95,6 +103,8 @@ export default function QuizRunner({
   const [idx, setIdx] = useState(0);
   const [results, setResults] = useState<ResultRow[]>([]);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [skipBusy, setSkipBusy] = useState(false);
+  const [skipNotice, setSkipNotice] = useState<string | null>(null);
   // 父组件通常以内联数组/对象传题型和选词范围。按内容生成签名，避免答题进度
   // 引发父组件重渲染时把本轮题目初始化回第一题。
   const quizTypesKey = types.join('|');
@@ -252,6 +262,36 @@ export default function QuizRunner({
 
   const q = questions[idx];
 
+  // 跳过提示自动消失
+  useEffect(() => {
+    if (!skipNotice) return;
+    const timer = setTimeout(() => setSkipNotice(null), 2500);
+    return () => clearTimeout(timer);
+  }, [skipNotice]);
+
+  // 跳过已掌握：收集尚未作答的词 id → resolve → 从池中剔除（仅索引大于当前题的题目）
+  const handleSkipTool = async () => {
+    if (!skipTool || skipBusy) return;
+    setSkipBusy(true);
+    try {
+      const remainingIds = Array.from(new Set(questions.slice(idx + 1).map((item) => item.word.id)));
+      const removeIds = new Set(await skipTool.resolve(remainingIds));
+      const next = questions.filter((item, i) => i <= idx || !removeIds.has(item.word.id));
+      const removed = questions.length - next.length;
+      if (removed > 0) {
+        setQuestions(next);
+        setSkipNotice(`已跳过 ${removed} 个已掌握单词`);
+      } else {
+        setSkipNotice('当前没有已掌握的单词');
+      }
+      skipTool.onResult?.(removed, remainingIds.length - removed);
+    } catch {
+      setSkipNotice('跳过失败，请重试');
+    } finally {
+      setSkipBusy(false);
+    }
+  };
+
   // 必须在所有条件 return 前调用，避免 loading -> quiz 切换时 Hook 数量变化。
   useEffect(() => {
     if (q && q.type !== 'dictation' && q.type !== 'phrase-blank') {
@@ -299,10 +339,28 @@ export default function QuizRunner({
             <Text style={[styles.backBtnText, { color: colors.tint }]}>返回</Text>
           </TouchableOpacity>
         )}
+        {skipTool && (
+          <TouchableOpacity
+            style={[styles.skipBtn, { borderColor: colors.border }]}
+            onPress={handleSkipTool}
+            disabled={skipBusy}
+            activeOpacity={0.7}
+          >
+            {skipBusy ? (
+              <ActivityIndicator size="small" color={colors.tint} />
+            ) : (
+              <FontAwesome name="forward" size={12} color={colors.tint} />
+            )}
+            <Text style={[styles.skipBtnText, { color: colors.tint }]}>{skipTool.label}</Text>
+          </TouchableOpacity>
+        )}
         <Text style={[styles.progressText, { color: colors.subtitle }]}>
           第 {idx + 1} / {questions.length} 题
         </Text>
       </View>
+      {skipNotice ? (
+        <Text style={[styles.skipNotice, { color: colors.tint }]}>{skipNotice}</Text>
+      ) : null}
       <QuestionCard
         key={idx}
         quiz={q}
@@ -747,6 +805,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
     marginBottom: 12,
   },
   backBtnWrap: {
@@ -759,6 +818,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   progressText: { fontSize: 14 },
+  skipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  skipBtnText: { fontSize: 12.5, fontWeight: '600' },
+  skipNotice: { fontSize: 12.5, marginBottom: 8 },
   qCard: { flex: 1, marginTop: 4 },
   qCardContent: { paddingBottom: 40 },
   qPrompt: { fontSize: 14, marginBottom: 8 },
