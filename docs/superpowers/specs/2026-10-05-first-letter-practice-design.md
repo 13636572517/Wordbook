@@ -74,7 +74,7 @@ skipTool?: {
 - 数据加载：挂载时 `repo.getWordsByWordbook` 一次；失败显示错误与重试。
 - `view: 'pick' | 'review' | 'choice' | 'dictation' | 'done'`。
 - `letter`、`reviewIdx`、`skippedIds`（Ref 同步累积 + state 触发渲染）、两阶段成绩。
-- 阶段词表：`letterWords - skippedIds`；进入选择阶段若为空则跳过该阶段（防御，正常流程不出现）。
+- 阶段词表：`letterWords - skippedIds`；若某阶段词表为空则该阶段直接跳过（防御，正常流程不出现）。
 - `resolve` 实现：逐个 `repo.getProgress` 判定已掌握，同步写入 skippedIds（Ref），返回剔除 id。
 - 每次重新开始（选字母 / 再练本字母）重置 skippedIds 与成绩。
 
