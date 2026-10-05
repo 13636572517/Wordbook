@@ -1056,7 +1056,7 @@ Again/Hard/Good/Easy 四个熟练度按钮超出屏幕底部不可见、无法�
 `首字母转练`（\u 转义）×2，旧 bundle（dist.bak）均为 0；本机与
 https://learning.yusuan.xyz 均 HTTP 200。
 
-## 41. 功能（2026-10-05）：首字母转练浏览页自动发音（`ab9276a`，待部署）
+## 41. 功能（2026-10-05）：首字母转练浏览页自动发音（`932eb8f`，已部署）
 
 **需求**：用户反馈浏览阶段需手动点发音按钮；改为显示单词时自动朗读。
 
@@ -1076,5 +1076,9 @@ PWA 在用户交互后一般允许），拦截时喇叭按钮兑底；真机播�
 上一词/二次进入共 4 次切词全部自动触发且单词匹配（__speakLog 网络请求对照），
 翻面手动行为保持，学习页等场景无影响，无新增控制台错误。
 
-**部署**：待用户确认后执行：push origin/main → 服务器 git pull +
-`bash /opt/learning/deploy.sh`。
+**部署（2026-10-05 完成，用户确认）**：先检查全平台最近 30 分钟无学习活动；
+push origin/main `7eef8df→932eb8f`；服务器 git pull（`d6ddfdb→932eb8f`
+fast-forward）+ `bash /opt/learning/deploy.sh`：bundle 4,199,107 bytes、GESP=2、
+静态路由 18 条。上线核验：index.html 引用新 entry-38c47e7c；新 bundle
+`autoSpeak`×2、旧 bundle（dist.bak）为 0；本机与 https://learning.yusuan.xyz
+均 HTTP 200。
