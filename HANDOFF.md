@@ -1,6 +1,6 @@
 # HANDOFF — 御算词擎（高中词汇学习 PWA）开发交接
 
-> 本文件供接手开发的 AI 阅读。最后更新：2026-09-06（§39 矮屏评分按钮溢出修复，已部署）。
+> 本文件供接手开发的 AI 阅读。最后更新：2026-10-05（§42 首字母转练自动发音失效修复，已部署）。
 
 ## 0. 最重要的约定（铁律，务必遵守）
 
@@ -1083,7 +1083,7 @@ fast-forward）+ `bash /opt/learning/deploy.sh`：bundle 4,199,107 bytes、GESP=
 `autoSpeak`×2、旧 bundle（dist.bak）为 0；本机与 https://learning.yusuan.xyz
 均 HTTP 200。
 
-## 42. 修复（2026-10-05）：首字母转练浏览页自动发音失效（`c2949e0`，待部署）
+## 42. 修复（2026-10-05）：首字母转练浏览页自动发音失效（`c2949e0`，已部署）
 
 **现象**：§41 上线后用户实测浏览页仍不自动发音（桌面自动化验证通过、真机无声）。
 
@@ -1109,5 +1109,10 @@ youdao 回退」2 条、与点击时间戳差 ≤3ms（同步触发铁证），�
 **已知存量问题**（与本次无关）：`lib/__tests__/quizgen.test.ts` 的 `weak` 用例
 在 HEAD 上预先失败（weak.length 4 ≠ 2，经 git stash 对照确认），待单独排查。
 
-**部署**：待用户确认后执行：push origin/main → 服务器 git pull +
-`bash /opt/learning/deploy.sh`。
+**部署（2026-10-05 完成，用户确认）**：先检查全平台最近 30 分钟无学习活动；
+push origin/main `0dd3efa→ed51117`；服务器 git pull（`932eb8f→ed51117`
+fast-forward）+ `bash /opt/learning/deploy.sh`：bundle 4,199,210 bytes、GESP=2、
+静态路由 18 条、dist.bak 已备份。上线核验：index.html 引用新 entry-cac70439；
+新 bundle `autoSpeak`=0、`first-letter-choice`×1、`首字母转练`（\u 转义）×2；
+旧 bundle（dist.bak，entry-38c47e7c）对照 `autoSpeak`×2（修复确已上线）；
+本机与 https://learning.yusuan.xyz 均 HTTP 200。
