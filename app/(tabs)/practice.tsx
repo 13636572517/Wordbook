@@ -9,6 +9,7 @@ import { type RangeKind } from '@/lib/quizgen';
 import { useSession } from '@/components/SessionProvider';
 import useColors from '@/components/useColors';
 import QuizRunner from '@/components/QuizRunner';
+import FirstLetterTrainer from '@/components/FirstLetterTrainer';
 import Layout from '@/constants/Layout';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,7 +25,7 @@ import {
 
 type QuizType = 'dictation' | 'choice' | 'phrase' | 'phrase-blank' | 'sentence-choice';
 type QuizRange = 'smart' | 'studied' | 'weak' | 'recent';
-type Mode = 'menu' | 'quiz';
+type Mode = 'menu' | 'quiz' | 'letters';
 
 const PRACTICE_GOALS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 const RANGES: { key: QuizRange; label: string }[] = [
@@ -141,6 +142,16 @@ export default function PracticeScreen() {
     );
   }
 
+  if (mode === 'letters') {
+    return (
+      <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+        <View style={styles.contentCol}>
+          <FirstLetterTrainer onExit={() => setMode('menu')} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* 下拉菜单打开时的透明遮罩：点击外部关闭 */}
@@ -154,6 +165,23 @@ export default function PracticeScreen() {
       <View style={styles.contentCol}>
         {title}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <TouchableOpacity
+          style={[styles.letterEntry, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => setMode('letters')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.typeIconWrap, { backgroundColor: colors.tint + '22' }]}>
+            <FontAwesome name="sort-alpha-asc" size={20} color={colors.tint} />
+          </View>
+          <View style={styles.letterEntryMain}>
+            <Text style={[styles.letterEntryTitle, { color: colors.text }]}>首字母转练</Text>
+            <Text style={[styles.letterEntryDesc, { color: colors.subtitle }]}>
+              选一个字母，快速浏览后集中练选择与默写
+            </Text>
+          </View>
+          <FontAwesome name="chevron-right" size={13} color={colors.subtitle} />
+        </TouchableOpacity>
+
         <Text style={[styles.scopeHint, { color: colors.pinyin }]}>练习「{wordbook?.name ?? '当前词本'}」中已学过的单词</Text>
         <View style={styles.settingRow}>
           <View>
@@ -247,6 +275,18 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: '700', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  letterEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 14,
+    marginBottom: 18,
+  },
+  letterEntryMain: { flex: 1 },
+  letterEntryTitle: { fontSize: 15, fontWeight: '700' },
+  letterEntryDesc: { fontSize: 12, marginTop: 3, lineHeight: 17 },
   scopeHint: { fontSize: 12.5, lineHeight: 18, marginBottom: 16 },
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 },
   settingLabel: { fontSize: 16, fontWeight: '700' },
