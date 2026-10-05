@@ -1014,3 +1014,38 @@ Again/Hard/Good/Easy 四个熟练度按钮超出屏幕底部不可见、无法�
 **部署（2026-09-06 完成，用户直接指示）**：main `6964a9b→38d848f` 推送后，
 服务器 git pull + `bash /opt/learning/deploy.sh`：bundle 4,185,735 bytes
 （> 4,116,000）、GESP=2、loginError=2、HTTP 200。
+
+## 40. 功能（2026-10-05）：练习页「首字母转练」（`7911388`，待部署）
+
+**功能**：练习 Tab 顶部新增「首字母转练」入口。选一个字母 → 快速浏览该字母
+全部单词（纯浏览闪卡，可「跳过复习」）→ 释义选择 → 单词默写 → 完成汇总
+（两阶段得分）。练习中途工具栏可点「跳过已掌握」，实时剔除**尚未作答**的
+已掌握题（口径 repetitions >= 3，与数据页统计同源），剔除对后续阶段一并
+生效；正在作答的题不受影响。
+
+**实现**：
+1. `lib/firstLetter.ts`（新）：letterOf/countWordsByLetter/wordsStartingWith/
+   isMastered/pickMasteredIds 纯逻辑 + 单测；`lib/data/stats.ts` 导出
+   MASTERED_REPETITIONS；`StudentProgressParts.tsx` 本地 letterOf 迁入共用。
+2. `components/QuizRunner.tsx`：新增可选 `skipTool` 属性（label + resolve +
+   onResult；不传则无按钮，其余 5 处调用方零影响）——点击后对未作答词查进度，
+   从题目池剔除并提示「已跳过 N 个已掌握单词」/「当前没有已掌握的单词」。
+3. `components/FirstLetterTrainer.tsx`（新）：五态流程机 pick/review/choice/
+   dictation/done。阶段词表进入时冻结（规避 QuizRunner quizWordIdsKey 变化
+   导致题目池重载丢进度）；choice→dictation 用不同 key 强制重挂；skippedRef
+   同步累积剔除集。
+4. `app/(tabs)/practice.tsx`：Mode 加 'letters' 分支 + ScrollView 顶部入口卡片。
+5. 设计 `docs/superpowers/specs/2026-10-05-first-letter-practice-design.md`、
+   计划 `docs/superpowers/plans/2026-10-05-first-letter-practice.md`。
+
+**验证**：tsc 0 错误；firstLetter/weak/stats/ui-regressions 单测全过；本地 web
+浏览器端到端实测（375×812 窄屏）全 PASS——入口/字母网格（有词可点、无词灰显）/
+浏览翻面发音/跳过复习/两阶段答题/「跳过已掌握」（注入 reps=3 实测题池 11→9
+且跨阶段生效）/完成汇总三按钮/中途退出回字母网格。截图 12 张：
+`docs/screenshots/first-letter-practice/`。
+
+**已知项（用户决定保留现状）**：种子词表含重复词条（高中词本 6008 条去重
+3743），同一单词可能以两条互斥释义同题出现（如 zip×2）；A 开头 543 个词条为
+词本内真实数量（去重后 310 词）。
+
+**部署**：待用户确认；前端唯一部署方式为服务器 `bash /opt/learning/deploy.sh`。
